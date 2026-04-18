@@ -1,0 +1,12 @@
+<?php
+
+
+namespace app\video\model;
+
+use think\Model;
+class ExtractListModel extends  Model
+{   
+
+    protected $connection='translate';
+    protected $table='ts_extract_list';
+}

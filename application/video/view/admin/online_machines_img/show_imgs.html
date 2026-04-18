@@ -1,0 +1,81 @@
+{extend name="$_admin_base_layout" /}
+{block name="content"}
+<style>
+.img-viewer-container {
+    position: relative;
+    width: 100%;
+    
+    margin: 40px auto;
+    text-align: center;
+}
+.img-viewer-img {
+    max-width: 100%;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.img-viewer-time {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 16px;
+    z-index: 10;
+}
+</style>
+<div style="text-align:center;margin-top:20px;font-size:18px;font-weight:bold;">MAC地址：{$mac_address}</div>
+<div style="text-align:center;margin:10px 0;">
+    <button onclick="speedUp()">加快</button>
+    <button onclick="slowDown()">减慢</button>
+    <span id="speedInfo" style="margin-left:10px;">切换间隔：1秒</span>
+</div>
+<div class="img-viewer-container">
+    <div class="img-viewer-time" id="imgTime"></div>
+    <img id="imgViewer" class="img-viewer-img" src="" alt="图片" />
+</div>
+<script>
+    var imgs = {$imgs|json_encode|raw};
+    console.log(imgs, 'imgs');
+    var idx = 0;
+    var intervalTime = 1000; // 初始间隔1秒
+    var timerId = null;
+
+    function showImg(i) {
+        var img = imgs[i];
+        document.getElementById('imgViewer').src = img.img_url;
+        document.getElementById('imgTime').innerText = img.time;
+    }
+    function nextImg() {
+        idx = (idx + 1) % imgs.length;
+        showImg(idx);
+    }
+    function updateSpeedInfo() {
+        document.getElementById('speedInfo').innerText = '切换间隔：' + (intervalTime / 1000) + '秒';
+    }
+    function startInterval() {
+        if (timerId) clearInterval(timerId);
+        timerId = setInterval(nextImg, intervalTime);
+        updateSpeedInfo();
+    }
+    function speedUp() {
+        if (intervalTime > 200) { // 最小200ms
+            intervalTime -= 200;
+            startInterval();
+        }
+    }
+    function slowDown() {
+        intervalTime += 200;
+        startInterval();
+    }
+
+    if(imgs.length > 0){
+        showImg(0);
+        startInterval();
+    }else{
+        document.getElementById('imgViewer').alt = '无图片';
+        document.getElementById('imgTime').innerText = '';
+    }
+</script>
+{/block} 

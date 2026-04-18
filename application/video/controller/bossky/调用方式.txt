@@ -1,0 +1,5 @@
+//PHP不需要转为BYTES数组
+//DES加密返回base64数据
+$req_data = \app\common\controller\Des::encrypt($reqData, $des_key);
+//RSA加签返回base64数据
+$sign = \app\common\controller\Rsa::genSign($req_data, $rsa_key);

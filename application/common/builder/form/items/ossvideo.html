@@ -1,0 +1,32 @@
+<div class="form-group col-lg-12 col-md-12 col-sm-12 col-xs-12 "> 
+    <label class="col-xs-12" for="{$form[type].name}">{$form[type].title|htmlspecialchars}</label> 
+    <div class="col-xs-12 "> 
+     <div id="" class="uploader-list"> 
+     </div> 
+     <div class="clearfix"></div> 
+     <input type="hidden" class="ali_webupload_pick" name="{$form[type].name}" data-multiple="false" data-watermark="" data-thumb="30,30|1" data-size="0" data-ext="gif,jpg,jpeg,bmp,png" id="ali_upload_value_{$form[type].name}" value="{$form[type]['value']}" /> 
+     <div class="webuploader-container">
+    <input class="btn btn-minw btn-primary ali_webupload_pick"   id="ali_upload_input_{$form[type].name}"  type="file"  name="file" accept="audio/*,video/*" style="display: none"/>
+    
+    <div id="file_list_{$form[type].name}" class="uploader-list">
+      
+        <div class="file-item thumbnail">
+            <div class="progress" style="display: none;">
+                <div class="progress-bar progress-bar-success" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;">
+                </div>
+              </div>
+            <video class="ali_webupload_pick" id="ali_upload_src_{$form[type].name}" src="{$form[type]['value']}" autoplay controls width="250px">
+                抱歉，您的浏览器不支持内嵌视频，不过不用担心，你可以 <a href="videofile.ogg">下载</a>
+                并用你喜欢的播放器观看！
+            </video>
+
+        </div>
+        
+    </div>
+
+    <div class="clearfix"></div>
+    <div id="ali_upload_btn_{$form[type].name}" class="ali_webupload_pick webuploader-pick" for="ali_upload_input_{$form[type].name}" >上传云端视频</div>
+      
+     </div> 
+    </div> 
+   </div>

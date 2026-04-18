@@ -1,0 +1,107 @@
+{extend name="$_admin_base_layout" /}
+
+{block name="content"}
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>进度显示</title>
+  <style>
+    /* Add some basic styling */
+    body {
+      font-family: Arial, sans-serif;
+    }
+    .progress-container {
+      width: 100%;
+      height: 30px;
+      background-color: #eee;
+      position: relative;
+    }
+    .progress-bar {
+      height: 100%;
+      background-color: #4caf50;
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+  </style>
+</head>
+<body>
+
+ 
+  <?php
+    // 将JSON字符串转换回PHP数组
+    $ai_sdyun = json_decode($ai_sdyun, true);
+  ?>
+  
+  <button id="update-data">当前开启机器数量：{$ai_sdyun_cnt}个</button>
+
+  {foreach $ai_sdyun as $index => $data}
+  <div class="content" id="content-{$index}">
+    <p id="title-{$index}">机器名称: </p>
+    <img id="current-image-{$index}" alt="当前图片{$index}" />
+    <div class="progress-container">
+      <div id="progress-bar-{$index}" class="progress-bar"></div>
+    </div>
+    <p id="eta-{$index}">剩余时间: </p>
+  </div>
+  {/foreach}
+
+</body>
+</html>
+
+{/block}
+
+{block name="script"}
+
+<script>
+  var aiSdyunData = <?php echo json_encode($ai_sdyun); ?>;
+
+  function updateData(contentId, url) {
+    const urls = url.sd_url + 'sdapi/v1/progress?skip_current_image=false';
+    const currentImageElement = document.getElementById(`current-image-${contentId}`);
+    const progressBarElement = document.getElementById(`progress-bar-${contentId}`);
+    const etaElement = document.getElementById(`eta-${contentId}`);
+    const titleElement = document.getElementById(`title-${contentId}`);
+    titleElement.textContent = "机器标题: " + url.title;
+
+    $.ajax({
+      url: '<?php echo url("getVideoData"); ?>',
+      type: 'POST',
+      data: { "url": urls },
+    }).done(function (data) {
+      currentImageElement.src = "data:image/jpeg;base64," + data.current_image;
+      progressBarElement.style.width = (data.progress * 100) + "%";
+      etaElement.textContent = "剩余时间: " + data.eta_relative.toFixed(2) + " 秒";
+      
+    });
+  }
+
+  const updateDataButton = document.getElementById("update-data");
+
+  function updateAllData() {
+    for (let i = 0; i < aiSdyunData.length; i++) {
+      updateData(i, aiSdyunData[i]);
+    }
+  }
+
+  updateDataButton.addEventListener("click", updateAllData);
+
+  // document.getElementById("cancl-draw-1").addEventListener("click", function () {
+  //   $.ajax({
+  //     url: '<?php echo url("getVideoPostData"); ?>',
+  //     type: 'POST',
+  //     data: { "url": "http://region-31.seetacloud.com:27953/sdapi/v1/interrupt" },
+  //   }).done(function (data) {
+  //     alert(data);
+  //   });
+  // });
+
+  setInterval(updateAllData, 10000);
+
+  $(document).ready(function () {
+    // Fetch data initially
+    updateAllData();
+  });
+</script>
+{/block}

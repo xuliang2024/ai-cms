@@ -1,0 +1,44 @@
+{extend name="$_admin_base_layout" /}
+
+{block name="content"}
+
+<div class="row">
+    <div class="container">
+        <div class="col-md-12">
+            <div class="block block-link-hover3">
+                <div class="block-content block-content-full">
+                    <div class="block-content block-content-full block-content-mini bg-gray-lighter text-muted font-w600 text-center">企业消息</div>
+                    <ul class="block-content block-content-full">
+                        {volist name="enterpriseMessages" id="message"}
+                        <li style="display: flex; justify-content: space-between;">
+                            <span style="flex: 1; text-align: center;">{$message['title']}</span>
+                            <span style="flex: 1; text-align: center;">{$message['date']}</span>
+                        </li>
+                        {/volist}
+                    </ul>
+                </div>
+                <a class="block-content block-content-full block-content-mini bg-gray-lighter text-muted" href="{:url('enterprise/messages')}" style="display: block; text-align: right; margin: 10px 10px 0 0;">查看更多</a>
+            </div>
+        </div>
+
+        <div class="col-md-12">
+            <div class="block block-link-hover3">
+                <div class="block-content block-content-full">
+                    <div class="block-content block-content-full block-content-mini bg-gray-lighter text-muted font-w600 text-center">我的待办</div>
+                    <ul class="block-content block-content-full">
+                        {volist name="pendingTasks" id="task"}
+                        <li style="display: flex; justify-content: space-between;">
+                            <span style="flex: 1; text-align: center;">{$task['title']}</span>
+                            <span style="flex: 1; text-align: center;">{$task['date']}</span>
+                            <span style="flex: 1; text-align: center; color: blue;">去处理</span>
+                        </li>
+                        {/volist}
+                    </ul>
+                </div>
+                <a class="block-content block-content-full block-content-mini  text-muted font-w600" href="{:url('user/pending_tasks')}" style="display: block; text-align: right; margin: 10px 10px 0 0;">查看全部</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+{/block}
