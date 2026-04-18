@@ -5,6 +5,7 @@ use app\admin\controller\Admin;
 use app\common\builder\ZBuilder;
 use think\Db;
 use app\video\model\ApiKeyCallLogModel;
+use app\video\model\ApiKeyDailyStatsModel;
 
 class ApiKeyCallLogMonitor extends Admin
 {
@@ -263,6 +264,117 @@ class ApiKeyCallLogMonitor extends Admin
         ]);
     }
 
+    public function ajaxDailyData()
+    {
+        $days = input('param.days', 30, 'intval');
+        if (!in_array($days, [7, 14, 30, 60, 90])) {
+            $days = 30;
+        }
+        $startDate = date('Y-m-d', strtotime("-{$days} days"));
+
+        // 1. 每日趋势
+        $dailyTrend = ApiKeyDailyStatsModel::where('date', '>=', $startDate)
+            ->field([
+                'date',
+                'SUM(total_calls) as calls',
+                'SUM(success_calls) as success',
+                'SUM(failed_calls) as failed',
+                'SUM(total_cost) as cost',
+                'SUM(api_calls) as api_calls',
+                'SUM(mcp_calls) as mcp_calls',
+                'COUNT(DISTINCT user_id) as users',
+            ])
+            ->group('date')
+            ->order('date asc')
+            ->select();
+
+        $trendDate = $trendCalls = $trendSuccess = $trendFailed = $trendCost = $trendUsers = [];
+        $totalCalls = $totalCost = $totalUsers = 0;
+        foreach ($dailyTrend as $row) {
+            $trendDate[]    = $row['date'];
+            $trendCalls[]   = intval($row['calls']);
+            $trendSuccess[] = intval($row['success']);
+            $trendFailed[]  = intval($row['failed']);
+            $trendCost[]    = round(floatval($row['cost']), 2);
+            $trendUsers[]   = intval($row['users']);
+            $totalCalls    += intval($row['calls']);
+            $totalCost     += floatval($row['cost']);
+        }
+        $totalUsers = count(array_unique(array_column($dailyTrend, 'users')));
+
+        // 汇总
+        $summary = ApiKeyDailyStatsModel::where('date', '>=', $startDate)
+            ->field([
+                'SUM(total_calls) as calls',
+                'SUM(success_calls) as success',
+                'SUM(failed_calls) as failed',
+                'SUM(total_cost) as cost',
+                'SUM(api_calls) as api_calls',
+                'SUM(mcp_calls) as mcp_calls',
+                'COUNT(DISTINCT user_id) as users',
+                'COUNT(DISTINCT api_key_id) as keys',
+            ])
+            ->find();
+
+        // 2. 模型排行（从 model_stats JSON 中解析）
+        $allRecords = ApiKeyDailyStatsModel::where('date', '>=', $startDate)
+            ->field('model_stats')
+            ->select();
+
+        $modelAgg = [];
+        foreach ($allRecords as $rec) {
+            $stats = json_decode($rec['model_stats'], true);
+            if (!is_array($stats)) continue;
+            foreach ($stats as $modelName => $info) {
+                $short = preg_replace('#^(fal-ai/|st-ai/)#', '', $modelName);
+                if (!isset($modelAgg[$short])) {
+                    $modelAgg[$short] = ['calls' => 0, 'cost' => 0];
+                }
+                $modelAgg[$short]['calls'] += intval($info['calls'] ?? 0);
+                $modelAgg[$short]['cost']  += floatval($info['cost'] ?? 0);
+            }
+        }
+        arsort($modelAgg);
+        $modelRank = [];
+        foreach (array_slice($modelAgg, 0, 20, true) as $name => $data) {
+            $modelRank[] = ['model' => $name, 'calls' => $data['calls'], 'cost' => $data['cost']];
+        }
+
+        // 3. 模型饼图数据
+        $modelPie = [];
+        foreach (array_slice($modelAgg, 0, 15, true) as $name => $data) {
+            $modelPie[] = ['name' => $name, 'value' => $data['calls']];
+        }
+
+        return json([
+            'code' => 0,
+            'data' => [
+                'summary' => [
+                    'calls'   => intval($summary['calls']),
+                    'success' => intval($summary['success']),
+                    'failed'  => intval($summary['failed']),
+                    'cost'    => round(floatval($summary['cost']), 2),
+                    'apiCalls' => intval($summary['api_calls']),
+                    'mcpCalls' => intval($summary['mcp_calls']),
+                    'users'   => intval($summary['users']),
+                    'keys'    => intval($summary['keys']),
+                ],
+                'trend' => [
+                    'date'    => $trendDate,
+                    'calls'   => $trendCalls,
+                    'success' => $trendSuccess,
+                    'failed'  => $trendFailed,
+                    'cost'    => $trendCost,
+                    'users'   => $trendUsers,
+                ],
+                'modelRank' => $modelRank,
+                'modelPie'  => $modelPie,
+            ],
+            'days' => $days,
+            'time' => date('Y-m-d H:i:s'),
+        ]);
+    }
+
     private function buildTimeRangeHtml($currentMinutes)
     {
         $options = [
@@ -292,6 +404,15 @@ class ApiKeyCallLogMonitor extends Admin
         return <<<'HTML'
 <style>
 .ak-wrap { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ak-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid #e4e7ed; }
+.ak-tab {
+    padding: 10px 24px; cursor: pointer; font-size: 14px; font-weight: 600;
+    color: #909399; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .2s;
+}
+.ak-tab:hover { color: #409eff; }
+.ak-tab.active { color: #409eff; border-bottom-color: #409eff; }
+.ak-panel { display: none; }
+.ak-panel.active { display: block; }
 .ak-cards { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
 .ak-card {
     flex: 1; min-width: 130px; padding: 16px 20px; border-radius: 8px;
@@ -325,6 +446,15 @@ class ApiKeyCallLogMonitor extends Admin
 </style>
 
 <div class="ak-wrap">
+    <!-- Tab 切换 -->
+    <div class="ak-tabs">
+        <div class="ak-tab active" onclick="akSwitchTab('realtime')">实时监控</div>
+        <div class="ak-tab" onclick="akSwitchTab('daily')">每日报表</div>
+    </div>
+
+    <!-- ========== 实时监控面板 ========== -->
+    <div id="ak-panel-realtime" class="ak-panel active">
+
     <!-- 概览卡片 -->
     <div class="ak-cards">
         <div class="ak-card" style="border-top-color:#409eff;">
@@ -430,6 +560,85 @@ class ApiKeyCallLogMonitor extends Admin
             <button class="ak-btn" id="ak-btn-refresh" onclick="akManualRefresh()">立即刷新</button>
         </div>
     </div>
+
+    </div><!-- /ak-panel-realtime -->
+
+    <!-- ========== 每日报表面板 ========== -->
+    <div id="ak-panel-daily" class="ak-panel">
+
+    <!-- 天数选择器 -->
+    <div style="margin-bottom:12px;padding:10px 14px;background:#f5f7fa;border-radius:6px;">
+        <span style="margin-right:10px;font-weight:bold;font-size:13px;">统计范围：</span>
+        <a href="javascript:;" onclick="akSetDays(7)" class="ak-day-btn" data-days="7" style="display:inline-block;padding:5px 15px;margin-right:5px;border:1px solid #dcdfe6;border-radius:4px;text-decoration:none;font-size:13px;background:#fff;color:#606266;">最近7天</a>
+        <a href="javascript:;" onclick="akSetDays(14)" class="ak-day-btn" data-days="14" style="display:inline-block;padding:5px 15px;margin-right:5px;border:1px solid #dcdfe6;border-radius:4px;text-decoration:none;font-size:13px;background:#fff;color:#606266;">最近14天</a>
+        <a href="javascript:;" onclick="akSetDays(30)" class="ak-day-btn active" data-days="30" style="display:inline-block;padding:5px 15px;margin-right:5px;border:1px solid #dcdfe6;border-radius:4px;text-decoration:none;font-size:13px;background:#409eff;color:#fff;border-color:#409eff;">最近30天</a>
+        <a href="javascript:;" onclick="akSetDays(60)" class="ak-day-btn" data-days="60" style="display:inline-block;padding:5px 15px;margin-right:5px;border:1px solid #dcdfe6;border-radius:4px;text-decoration:none;font-size:13px;background:#fff;color:#606266;">最近60天</a>
+        <a href="javascript:;" onclick="akSetDays(90)" class="ak-day-btn" data-days="90" style="display:inline-block;padding:5px 15px;margin-right:5px;border:1px solid #dcdfe6;border-radius:4px;text-decoration:none;font-size:13px;background:#fff;color:#606266;">最近90天</a>
+    </div>
+
+    <!-- 汇总卡片 -->
+    <div class="ak-cards">
+        <div class="ak-card" style="border-top-color:#409eff;">
+            <div class="card-value" style="color:#409eff;" id="daily-total-calls">-</div>
+            <div class="card-label">总调用数</div>
+        </div>
+        <div class="ak-card" style="border-top-color:#67c23a;">
+            <div class="card-value" style="color:#67c23a;" id="daily-success">-</div>
+            <div class="card-label">成功</div>
+        </div>
+        <div class="ak-card" style="border-top-color:#f56c6c;">
+            <div class="card-value" style="color:#f56c6c;" id="daily-failed">-</div>
+            <div class="card-label">失败</div>
+        </div>
+        <div class="ak-card" style="border-top-color:#fc8452;">
+            <div class="card-value" style="color:#fc8452;" id="daily-total-cost">-</div>
+            <div class="card-label">总消耗(积分)</div>
+        </div>
+        <div class="ak-card" style="border-top-color:#9b59b6;">
+            <div class="card-value" style="color:#9b59b6;" id="daily-users">-</div>
+            <div class="card-label">活跃用户数</div>
+        </div>
+        <div class="ak-card" style="border-top-color:#3498db;">
+            <div class="card-value" style="color:#3498db;" id="daily-keys">-</div>
+            <div class="card-label">活跃Key数</div>
+        </div>
+    </div>
+
+    <!-- 每日调用趋势 -->
+    <div class="ak-trend-row">
+        <div id="daily-chart-trend" style="width:100%;height:380px;"></div>
+    </div>
+
+    <!-- 每日消耗趋势 -->
+    <div class="ak-trend-row">
+        <div id="daily-chart-cost" style="width:100%;height:360px;"></div>
+    </div>
+
+    <!-- 模型分布 + 模型排行 -->
+    <div class="ak-charts-row">
+        <div class="chart-box">
+            <div id="daily-chart-model" style="width:100%;height:380px;"></div>
+        </div>
+        <div class="chart-box" style="flex:1.2;">
+            <div style="font-size:14px;font-weight:bold;color:#303133;margin-bottom:12px;padding:8px 12px;">模型消耗排行 (Top 20)</div>
+            <table id="daily-model-rank" style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead>
+                    <tr style="background:#f5f7fa;">
+                        <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;">#</th>
+                        <th style="padding:8px 12px;text-align:left;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;">模型名称</th>
+                        <th style="padding:8px 8px;text-align:center;border-bottom:2px solid #ebeef5;color:#409eff;font-weight:600;">调用次数</th>
+                        <th style="padding:8px 8px;text-align:right;border-bottom:2px solid #ebeef5;color:#fc8452;font-weight:600;">消耗(积分)</th>
+                    </tr>
+                </thead>
+                <tbody id="daily-model-rank-body">
+                    <tr><td colspan="4" style="text-align:center;padding:20px;color:#909399;">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    </div><!-- /ak-panel-daily -->
+
 </div>
 HTML;
     }
@@ -437,6 +646,7 @@ HTML;
     private function buildDashboardJs($minutes)
     {
         $ajaxUrl = url('ajaxData', ['minutes' => $minutes]);
+        $dailyAjaxUrl = url('ajaxDailyData', ['days' => 30]);
         $minutesLabels = [
             30   => '最近 30 分钟',
             60   => '最近 1 小时',
@@ -669,6 +879,149 @@ HTML;
 
     fetchData();
     setInterval(tick, 1000);
+
+    // ========== Tab 切换 ==========
+    window.akSwitchTab = function(tab) {
+        $('.ak-tab').removeClass('active');
+        $('.ak-panel').removeClass('active');
+        if (tab === 'realtime') {
+            $('.ak-tab').eq(0).addClass('active');
+            $('#ak-panel-realtime').addClass('active');
+            chartModel.resize(); chartStatus.resize(); chartChannel.resize(); chartTrend.resize();
+        } else {
+            $('.ak-tab').eq(1).addClass('active');
+            $('#ak-panel-daily').addClass('active');
+            if (!dailyInited) { initDailyCharts(); dailyInited = true; fetchDailyData(); }
+            else { dailyChartTrend.resize(); dailyChartCost.resize(); dailyChartModel.resize(); }
+        }
+    };
+
+    // ========== 每日报表 ==========
+    var dailyInited = false;
+    var dailyDays = 30;
+    var dailyChartTrend, dailyChartCost, dailyChartModel;
+
+    function initDailyCharts() {
+        dailyChartTrend = echarts.init(document.getElementById('daily-chart-trend'));
+        dailyChartCost  = echarts.init(document.getElementById('daily-chart-cost'));
+        dailyChartModel = echarts.init(document.getElementById('daily-chart-model'));
+
+        window.addEventListener('resize', function() {
+            if (dailyChartTrend) dailyChartTrend.resize();
+            if (dailyChartCost) dailyChartCost.resize();
+            if (dailyChartModel) dailyChartModel.resize();
+        });
+
+        dailyChartTrend.setOption({
+            title: { text: '每日调用趋势', textStyle: { fontSize: 14, color: '#303133' } },
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['总调用', '成功', '失败', '活跃用户'], top: 5, right: 20 },
+            grid: { left: '3%', right: '5%', bottom: '3%', top: 50, containLabel: true },
+            toolbox: { feature: { saveAsImage: {} } },
+            xAxis: { type: 'category', data: [], axisLabel: { fontSize: 11, rotate: 30 } },
+            yAxis: [
+                { type: 'value', minInterval: 1, name: '调用数' },
+                { type: 'value', name: '用户数', splitLine: { show: false } }
+            ],
+            series: [
+                { name: '总调用', type: 'bar', yAxisIndex: 0, data: [], itemStyle: { color: 'rgba(64,158,255,0.7)' }, barMaxWidth: 30 },
+                { name: '成功', type: 'line', smooth: true, yAxisIndex: 0, data: [], itemStyle: { color: '#67c23a' }, lineStyle: { width: 2 } },
+                { name: '失败', type: 'line', smooth: true, yAxisIndex: 0, data: [], itemStyle: { color: '#f56c6c' }, lineStyle: { width: 2 } },
+                { name: '活跃用户', type: 'line', smooth: true, yAxisIndex: 1, data: [], itemStyle: { color: '#9b59b6' }, lineStyle: { width: 2, type: 'dashed' } }
+            ]
+        });
+
+        dailyChartCost.setOption({
+            title: { text: '每日消耗趋势 (积分)', textStyle: { fontSize: 14, color: '#303133' } },
+            tooltip: { trigger: 'axis', formatter: function(p) { return p[0].axisValue + '<br/>' + p[0].marker + '消耗: ' + p[0].value.toLocaleString() + ' 积分'; } },
+            grid: { left: '3%', right: '5%', bottom: '3%', top: 50, containLabel: true },
+            toolbox: { feature: { saveAsImage: {} } },
+            xAxis: { type: 'category', data: [], axisLabel: { fontSize: 11, rotate: 30 } },
+            yAxis: { type: 'value', name: '积分' },
+            series: [{
+                name: '消耗', type: 'bar', data: [],
+                itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{offset: 0, color: '#fc8452'}, {offset: 1, color: '#ffd7c0'}]) },
+                barMaxWidth: 30
+            }]
+        });
+
+        dailyChartModel.setOption({
+            title: { text: '模型调用分布 (Top 15)', left: 'center', textStyle: { fontSize: 14, color: '#303133' } },
+            tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+            legend: { orient: 'vertical', left: 10, top: 30, textStyle: { fontSize: 11 }, type: 'scroll' },
+            series: [{ name: '调用数', type: 'pie', radius: ['35%', '65%'], center: ['60%', '55%'],
+                itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
+                label: { show: false }, emphasis: { label: { show: true, fontSize: 13, fontWeight: 'bold' } },
+                data: []
+            }]
+        });
+    }
+
+    function fetchDailyData() {
+        var dailyUrl = '{$dailyAjaxUrl}'.replace(/days=\d+/, 'days=' + dailyDays);
+        $.ajax({
+            url: dailyUrl,
+            type: 'GET',
+            dataType: 'json',
+            success: function(res) {
+                if (res.code !== 0) return;
+                var d = res.data;
+
+                $('#daily-total-calls').text(d.summary.calls.toLocaleString());
+                $('#daily-success').text(d.summary.success.toLocaleString());
+                $('#daily-failed').text(d.summary.failed.toLocaleString());
+                $('#daily-total-cost').text(d.summary.cost.toLocaleString());
+                $('#daily-users').text(d.summary.users);
+                $('#daily-keys').text(d.summary.keys);
+
+                dailyChartTrend.setOption({
+                    xAxis: { data: d.trend.date },
+                    series: [
+                        { data: d.trend.calls },
+                        { data: d.trend.success },
+                        { data: d.trend.failed },
+                        { data: d.trend.users }
+                    ]
+                });
+
+                dailyChartCost.setOption({
+                    xAxis: { data: d.trend.date },
+                    series: [{ data: d.trend.cost }]
+                });
+
+                dailyChartModel.setOption({ series: [{ data: d.modelPie }] });
+
+                var tbody = $('#daily-model-rank-body');
+                tbody.empty();
+                if (d.modelRank && d.modelRank.length > 0) {
+                    for (var i = 0; i < d.modelRank.length; i++) {
+                        var m = d.modelRank[i];
+                        var bg = i % 2 === 0 ? '#fff' : '#fafafa';
+                        var rankColor = i < 3 ? '#fc8452' : '#606266';
+                        tbody.append('<tr style="background:' + bg + ';" onmouseover="this.style.background=\'#ecf5ff\'" onmouseout="this.style.background=\'' + bg + '\'">'
+                            + '<td style="padding:8px 12px;border-bottom:1px solid #ebeef5;color:' + rankColor + ';font-weight:bold;">' + (i+1) + '</td>'
+                            + '<td style="padding:8px 12px;border-bottom:1px solid #ebeef5;color:#409eff;font-weight:bold;">' + m.model + '</td>'
+                            + '<td style="padding:8px 8px;text-align:center;border-bottom:1px solid #ebeef5;">' + m.calls.toLocaleString() + '</td>'
+                            + '<td style="padding:8px 8px;text-align:right;border-bottom:1px solid #ebeef5;color:#fc8452;font-weight:bold;">' + m.cost.toLocaleString() + '</td>'
+                            + '</tr>');
+                    }
+                }
+            }
+        });
+    }
+
+    window.akSetDays = function(days) {
+        dailyDays = days;
+        $('.ak-day-btn').each(function() {
+            if ($(this).data('days') == days) {
+                $(this).css({background:'#409eff', color:'#fff', borderColor:'#409eff'});
+            } else {
+                $(this).css({background:'#fff', color:'#606266', borderColor:'#dcdfe6'});
+            }
+        });
+        fetchDailyData();
+    };
+
 })();
 </script>
 JS;
