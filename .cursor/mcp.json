@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "cursor-loop": {
+      "command": "node",
+      "args": [
+        "/Users/m007/.cursor/extensions/local.cursor-loop-1.0.8/dist/mcp-server.mjs"
+      ],
+      "env": {
+        "CURSOR_LOOP_DATA_DIR": "/Users/m007/.cursor-loop/2887f4f08092"
+      }
+    }
+  }
+}

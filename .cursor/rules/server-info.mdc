@@ -1,0 +1,43 @@
+---
+description: "ai-cms 项目线上服务器信息与部署流程"
+globs: "**/*"
+alwaysApply: true
+---
+
+# 线上服务器信息
+
+- **服务器 IP**: 101.47.73.216
+- **登录用户**: root
+- **SSH 命令**: `ssh root@101.47.73.216`
+- **项目目录**: `/www/wwwroot/ai-cms.fyshark.com/`
+- **域名**: ai-cms.fyshark.com
+- **线上访问地址**: https://cms.xskill.ai/
+- **系统**: Ubuntu 24.04 LTS
+
+# 部署流程
+
+## Git 仓库
+- **远程仓库**: https://github.com/xuliang2024/ai-cms.git
+- **主分支**: master
+
+## 上线步骤
+
+### 1. 本地提交
+```bash
+cd /Users/m007/codes/ai-cms
+git add .
+git commit -m "描述本次变更"
+git push origin master
+```
+
+### 2. 服务器同步
+```bash
+ssh root@101.47.73.216
+cd /www/wwwroot/ai-cms.fyshark.com/
+git pull origin master
+```
+
+## 注意事项
+- 提交前确认代码无误，检查 `git diff` 查看变更
+- 推送到 master 后再登录服务器 pull 同步
+- 如需回滚，使用 `git log` 找到目标 commit，执行 `git reset --hard <commit>`
