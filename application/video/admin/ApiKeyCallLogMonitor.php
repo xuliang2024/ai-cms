@@ -313,7 +313,7 @@ class ApiKeyCallLogMonitor extends Admin
                 'SUM(api_calls) as api_calls',
                 'SUM(mcp_calls) as mcp_calls',
                 'COUNT(DISTINCT user_id) as users',
-                'COUNT(DISTINCT api_key_id) as keys',
+                'COUNT(DISTINCT api_key_id) as `keys`',
             ])
             ->find();
 
