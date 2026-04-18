@@ -300,7 +300,8 @@ class ApiKeyCallLogMonitor extends Admin
             $totalCalls    += intval($row['calls']);
             $totalCost     += floatval($row['cost']);
         }
-        $totalUsers = count(array_unique(array_column($dailyTrend, 'users')));
+        $trendArr = is_array($dailyTrend) ? $dailyTrend : $dailyTrend->toArray();
+        $totalUsers = count(array_unique(array_column($trendArr, 'users')));
 
         // 汇总
         $summary = ApiKeyDailyStatsModel::where('date', '>=', $startDate)
