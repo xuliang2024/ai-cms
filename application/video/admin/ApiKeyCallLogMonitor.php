@@ -19,6 +19,7 @@ class ApiKeyCallLogMonitor extends Admin
         $startTime = date('Y-m-d H:i:s', strtotime("-{$minutes} minutes"));
 
         $dataList = ApiKeyCallLogModel::where('created_at', '>=', $startTime)
+            ->where('channel', 'openrouter')
             ->order('created_at desc')
             ->limit(200)
             ->select();
@@ -27,8 +28,8 @@ class ApiKeyCallLogMonitor extends Admin
         $js = $this->buildDashboardJs($minutes);
 
         return ZBuilder::make('table')
-            ->setPageTitle('API Key 调用量监控')
-            ->setPageTips("自动每 5 秒刷新，展示最近 {$minutes} 分钟的调用数据", 'info')
+            ->setPageTitle('OpenRouter 调用监控')
+            ->setPageTips("自动每 5 秒刷新，展示最近 {$minutes} 分钟的 OpenRouter 调用数据", 'info')
             ->setTableName('video/ApiKeyCallLogModel', 2)
             ->js("libs/echart/echarts.min")
             ->setExtraHtml($contentHtml, 'toolbar_top')
@@ -71,8 +72,11 @@ class ApiKeyCallLogMonitor extends Admin
 
         $startTime = date('Y-m-d H:i:s', strtotime("-{$minutes} minutes"));
 
+        $channelFilter = 'openrouter';
+
         // 1. 概览
         $overview = ApiKeyCallLogModel::where('created_at', '>=', $startTime)
+            ->where('channel', $channelFilter)
             ->field([
                 'COUNT(*) as total',
                 'SUM(CASE WHEN status = "success" THEN 1 ELSE 0 END) as success',
@@ -98,7 +102,7 @@ class ApiKeyCallLogMonitor extends Admin
         $successRate = $total > 0 ? round($success / $total * 100, 1) : 0;
         $failRate = $total > 0 ? round($failed / $total * 100, 1) : 0;
 
-        // 2. 渠道分布
+        // 2. 渠道分布（保留全渠道数据用于对比）
         $channelDist = ApiKeyCallLogModel::where('created_at', '>=', $startTime)
             ->field(['channel', 'COUNT(*) as count', 'IFNULL(SUM(price), 0) as totalPrice'])
             ->group('channel')
@@ -116,6 +120,7 @@ class ApiKeyCallLogMonitor extends Admin
 
         // 3. 模型分布 (Top 15)
         $modelDist = ApiKeyCallLogModel::where('created_at', '>=', $startTime)
+            ->where('channel', $channelFilter)
             ->field(['model', 'COUNT(*) as count'])
             ->group('model')
             ->order('count desc')
@@ -130,6 +135,7 @@ class ApiKeyCallLogMonitor extends Admin
 
         // 4. 状态分布
         $statusDist = ApiKeyCallLogModel::where('created_at', '>=', $startTime)
+            ->where('channel', $channelFilter)
             ->field(['status', 'COUNT(*) as count'])
             ->group('status')
             ->select();
@@ -149,6 +155,7 @@ class ApiKeyCallLogMonitor extends Admin
         }
 
         $trendRaw = ApiKeyCallLogModel::where('created_at', '>=', $startTime)
+            ->where('channel', $channelFilter)
             ->field([
                 "{$groupExpr} as time_slot",
                 'COUNT(*) as total',
@@ -173,6 +180,7 @@ class ApiKeyCallLogMonitor extends Admin
 
         // 6. 模型维度统计
         $modelStats = ApiKeyCallLogModel::where('created_at', '>=', $startTime)
+            ->where('channel', $channelFilter)
             ->field([
                 'model',
                 'COUNT(*) as total',
@@ -210,6 +218,7 @@ class ApiKeyCallLogMonitor extends Admin
 
         // 7. 最新调用列表
         $recentLogs = ApiKeyCallLogModel::where('created_at', '>=', $startTime)
+            ->where('channel', $channelFilter)
             ->field('id, user_id, model, channel, price, status, latency_ms, created_at')
             ->order('created_at desc')
             ->limit(200)
@@ -271,17 +280,17 @@ class ApiKeyCallLogMonitor extends Admin
             $days = 30;
         }
         $startDate = date('Y-m-d', strtotime("-{$days} days"));
+        $channelFilter = 'openrouter';
 
-        // 1. 每日趋势
-        $dailyTrend = ApiKeyDailyStatsModel::where('date', '>=', $startDate)
+        // 直接从 api_key_call_log 按天聚合，只统计 openrouter 渠道
+        $dailyTrend = ApiKeyCallLogModel::where('created_at', '>=', $startDate)
+            ->where('channel', $channelFilter)
             ->field([
-                'date',
-                'SUM(total_calls) as calls',
-                'SUM(success_calls) as success',
-                'SUM(failed_calls) as failed',
-                'SUM(total_cost) as cost',
-                'SUM(api_calls) as api_calls',
-                'SUM(mcp_calls) as mcp_calls',
+                'DATE(created_at) as date',
+                'COUNT(*) as calls',
+                'SUM(CASE WHEN status = "success" THEN 1 ELSE 0 END) as success',
+                'SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) as failed',
+                'IFNULL(SUM(price), 0) as cost',
                 'COUNT(DISTINCT user_id) as users',
             ])
             ->group('date')
@@ -289,7 +298,6 @@ class ApiKeyCallLogMonitor extends Admin
             ->select();
 
         $trendDate = $trendCalls = $trendSuccess = $trendFailed = $trendCost = $trendUsers = [];
-        $totalCalls = $totalCost = $totalUsers = 0;
         foreach ($dailyTrend as $row) {
             $trendDate[]    = $row['date'];
             $trendCalls[]   = intval($row['calls']);
@@ -297,54 +305,39 @@ class ApiKeyCallLogMonitor extends Admin
             $trendFailed[]  = intval($row['failed']);
             $trendCost[]    = round(floatval($row['cost']), 2);
             $trendUsers[]   = intval($row['users']);
-            $totalCalls    += intval($row['calls']);
-            $totalCost     += floatval($row['cost']);
         }
-        $trendArr = is_array($dailyTrend) ? $dailyTrend : $dailyTrend->toArray();
-        $totalUsers = count(array_unique(array_column($trendArr, 'users')));
 
         // 汇总
-        $summary = ApiKeyDailyStatsModel::where('date', '>=', $startDate)
+        $summary = ApiKeyCallLogModel::where('created_at', '>=', $startDate)
+            ->where('channel', $channelFilter)
             ->field([
-                'SUM(total_calls) as calls',
-                'SUM(success_calls) as success',
-                'SUM(failed_calls) as failed',
-                'SUM(total_cost) as cost',
-                'SUM(api_calls) as api_calls',
-                'SUM(mcp_calls) as mcp_calls',
+                'COUNT(*) as calls',
+                'SUM(CASE WHEN status = "success" THEN 1 ELSE 0 END) as success',
+                'SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) as failed',
+                'IFNULL(SUM(price), 0) as cost',
                 'COUNT(DISTINCT user_id) as users',
-                'COUNT(DISTINCT api_key_id) as `keys`',
+                'COUNT(DISTINCT api_key_id) as key_count',
             ])
             ->find();
 
-        // 2. 模型排行（从 model_stats JSON 中解析）
-        $allRecords = ApiKeyDailyStatsModel::where('date', '>=', $startDate)
-            ->field('model_stats')
+        // 模型排行
+        $modelRankRaw = ApiKeyCallLogModel::where('created_at', '>=', $startDate)
+            ->where('channel', $channelFilter)
+            ->field(['model', 'COUNT(*) as calls', 'IFNULL(SUM(price), 0) as cost'])
+            ->group('model')
+            ->order('calls desc')
+            ->limit(20)
             ->select();
 
-        $modelAgg = [];
-        foreach ($allRecords as $rec) {
-            $stats = json_decode($rec['model_stats'], true);
-            if (!is_array($stats)) continue;
-            foreach ($stats as $modelName => $info) {
-                $short = preg_replace('#^(fal-ai/|st-ai/)#', '', $modelName);
-                if (!isset($modelAgg[$short])) {
-                    $modelAgg[$short] = ['calls' => 0, 'cost' => 0];
-                }
-                $modelAgg[$short]['calls'] += intval($info['calls'] ?? 0);
-                $modelAgg[$short]['cost']  += floatval($info['cost'] ?? 0);
-            }
-        }
-        arsort($modelAgg);
         $modelRank = [];
-        foreach (array_slice($modelAgg, 0, 20, true) as $name => $data) {
-            $modelRank[] = ['model' => $name, 'calls' => $data['calls'], 'cost' => $data['cost']];
-        }
-
-        // 3. 模型饼图数据
         $modelPie = [];
-        foreach (array_slice($modelAgg, 0, 15, true) as $name => $data) {
-            $modelPie[] = ['name' => $name, 'value' => $data['calls']];
+        $count = 0;
+        foreach ($modelRankRaw as $m) {
+            $modelRank[] = ['model' => $m['model'], 'calls' => intval($m['calls']), 'cost' => round(floatval($m['cost']), 2)];
+            if ($count < 15) {
+                $modelPie[] = ['name' => $m['model'], 'value' => intval($m['calls'])];
+            }
+            $count++;
         }
 
         return json([
@@ -355,10 +348,8 @@ class ApiKeyCallLogMonitor extends Admin
                     'success' => intval($summary['success']),
                     'failed'  => intval($summary['failed']),
                     'cost'    => round(floatval($summary['cost']), 2),
-                    'apiCalls' => intval($summary['api_calls']),
-                    'mcpCalls' => intval($summary['mcp_calls']),
                     'users'   => intval($summary['users']),
-                    'keys'    => intval($summary['keys']),
+                    'keys'    => intval($summary['key_count']),
                 ],
                 'trend' => [
                     'date'    => $trendDate,
