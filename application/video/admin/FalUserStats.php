@@ -47,7 +47,10 @@ class FalUserStats extends Admin {
             ->setExtraHtml($contentHtml, 'toolbar_top')
             ->setHeight('auto')
             ->addColumns([
-                ['user_id', '用户ID'],
+                ['user_id', '用户ID', 'callback', function($value){
+                    $uid = intval($value);
+                    return "<a href='javascript:void(0);' onclick='openUserLedger({$uid});return false;' style='color:#409eff;font-weight:bold;text-decoration:none;' title='查看积分明细和现金明细'>{$uid}</a>";
+                }],
                 ['points_balance', '积分余额(元)', 'callback', function($value){
                     return "<span style='color:#9b59b6;font-weight:bold'>¥{$value}</span>";
                 }],
@@ -335,9 +338,33 @@ class FalUserStats extends Admin {
     padding: 5px 14px; border: 1px solid #dcdfe6; border-radius: 4px;
     background: #fff; color: #606266; cursor: pointer; font-size: 13px; transition: all .2s;
 }
-.ustats-btn:hover { border-color: #409eff; color: #409eff; }
-.ustats-btn.active { background: #409eff; color: #fff; border-color: #409eff; }
-</style>
+	.ustats-btn:hover { border-color: #409eff; color: #409eff; }
+	.ustats-btn.active { background: #409eff; color: #fff; border-color: #409eff; }
+	.ustats-ledger-mask {
+	    display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+	    background: rgba(0,0,0,.28); z-index: 9999; align-items: center; justify-content: center;
+	}
+	.ustats-ledger-dialog {
+	    width: 360px; background: #fff; border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,.18);
+	    padding: 18px 20px 20px;
+	}
+	.ustats-ledger-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+	.ustats-ledger-title { font-size: 16px; font-weight: 700; color: #303133; }
+	.ustats-ledger-subtitle { margin-top: 4px; font-size: 12px; color: #909399; }
+	.ustats-ledger-close {
+	    border: 0; background: transparent; color: #909399; cursor: pointer;
+	    font-size: 22px; line-height: 22px; padding: 0;
+	}
+	.ustats-ledger-actions { display: flex; gap: 10px; margin-top: 18px; }
+	.ustats-ledger-actions a {
+	    flex: 1; display: block; padding: 9px 12px; border-radius: 4px;
+	    text-align: center; text-decoration: none; font-weight: 600;
+	}
+	.ustats-ledger-points { color: #9b59b6; background: #f7ecfb; border: 1px solid #e6c5f2; }
+	.ustats-ledger-cash { color: #409eff; background: #ecf5ff; border: 1px solid #b3d8ff; }
+	.ustats-user-link { color: #409eff; font-weight: 700; text-decoration: none; }
+	.ustats-user-link:hover { text-decoration: underline; }
+	</style>
 
 <div class="ustats-wrap">
     <div class="ustats-cards" id="ustats-cards">
@@ -419,10 +446,26 @@ class FalUserStats extends Admin {
             <tbody id="user-stats-body">
                 <tr><td colspan="14" style="text-align:center;padding:20px;color:#909399;">加载中...</td></tr>
             </tbody>
-        </table>
-    </div>
+	        </table>
+	    </div>
 
-    <div class="ustats-status-bar">
+	    <div class="ustats-ledger-mask" id="ustats-ledger-mask" onclick="closeUserLedger()">
+	        <div class="ustats-ledger-dialog" onclick="event.stopPropagation();">
+	            <div class="ustats-ledger-head">
+	                <div>
+	                    <div class="ustats-ledger-title">用户明细账单</div>
+	                    <div class="ustats-ledger-subtitle" id="ustats-ledger-subtitle">用户ID：-</div>
+	                </div>
+	                <button type="button" class="ustats-ledger-close" onclick="closeUserLedger()" aria-label="关闭">&times;</button>
+	            </div>
+	            <div class="ustats-ledger-actions">
+	                <a href="javascript:void(0);" target="_blank" id="ustats-ledger-points" class="ustats-ledger-points">积分明细</a>
+	                <a href="javascript:void(0);" target="_blank" id="ustats-ledger-cash" class="ustats-ledger-cash">现金明细</a>
+	            </div>
+	        </div>
+	    </div>
+
+	    <div class="ustats-status-bar">
         <div class="status-left">
             <span class="status-dot" id="ustats-dot"></span>
             <span id="ustats-status-text">正在加载数据...</span>
@@ -440,6 +483,8 @@ HTML;
     private function buildDashboardJs($minutes)
     {
         $ajaxUrl = url('ajaxData', ['minutes' => $minutes]);
+        $pointsDetailUrl = url('video/points_detail/index');
+        $cashDetailUrl = url('video/financial_transactions/index');
 
         $minutesLabels = [
             60   => '最近 1 小时',
@@ -484,10 +529,57 @@ HTML;
         ]
     });
 
-    var allUserStats = [];
-    var currentSort = { field: 'task_count', asc: false };
+	    var allUserStats = [];
+	    var currentSort = { field: 'task_count', asc: false };
+	    var pointsDetailUrl = '{$pointsDetailUrl}';
+	    var cashDetailUrl = '{$cashDetailUrl}';
 
-    function renderUserTable(data) {
+	    function escapeHtml(value) {
+	        return String(value || '').replace(/[&<>"']/g, function(ch) {
+	            return ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch]);
+	        });
+	    }
+
+	    function buildSearchUrl(baseUrl, pairs) {
+	        var search = [];
+	        var ops = [];
+	        for (var i = 0; i < pairs.length; i++) {
+	            search.push(pairs[i].field + '=' + pairs[i].value);
+	            ops.push(pairs[i].field + '=eq');
+	        }
+	        var separator = baseUrl.indexOf('?') === -1 ? '?' : '&';
+	        return baseUrl + separator + '_s=' + encodeURIComponent(search.join('|')) + '&_o=' + encodeURIComponent(ops.join('|'));
+	    }
+
+	    function userLedgerLink(userId) {
+	        var uid = parseInt(userId, 10) || 0;
+	        return '<a href="javascript:void(0);" class="ustats-user-link" onclick="openUserLedger(' + uid + ');return false;" title="查看积分明细和现金明细">' + uid + '</a>';
+	    }
+
+	    window.openUserLedger = function(userId) {
+	        var uid = parseInt(userId, 10) || 0;
+	        if (!uid) return;
+
+	        var mask = document.getElementById('ustats-ledger-mask');
+	        var subtitle = document.getElementById('ustats-ledger-subtitle');
+	        var pointsLink = document.getElementById('ustats-ledger-points');
+	        var cashLink = document.getElementById('ustats-ledger-cash');
+	        if (!mask || !subtitle || !pointsLink || !cashLink) return;
+
+	        subtitle.textContent = '用户ID：' + uid;
+	        pointsLink.href = buildSearchUrl(pointsDetailUrl, [{ field: 'user_id', value: uid }]);
+	        cashLink.href = buildSearchUrl(cashDetailUrl, [{ field: 'user_id', value: uid }]);
+	        mask.style.display = 'flex';
+	    };
+
+	    window.closeUserLedger = function() {
+	        var mask = document.getElementById('ustats-ledger-mask');
+	        if (mask) {
+	            mask.style.display = 'none';
+	        }
+	    };
+
+	    function renderUserTable(data) {
         var tbody = document.getElementById('user-stats-body');
         if (!tbody) return;
         tbody.innerHTML = '';
@@ -498,13 +590,14 @@ HTML;
         }
 
         for (var i = 0; i < data.length; i++) {
-            var u = data[i];
-            var srColor = u.success_rate >= 80 ? '#67c23a' : (u.success_rate >= 50 ? '#e6a23c' : '#f56c6c');
-            var bg = i % 2 === 0 ? '#fff' : '#fafafa';
-            var refundColor = u.refund_money > 0 ? '#f56c6c' : '#909399';
-            var row = '<tr style="background:' + bg + ';" onmouseover="this.style.background=\'#ecf5ff\'" onmouseout="this.style.background=\'' + bg + '\'">'
-                + '<td style="padding:9px 12px;border-bottom:1px solid #ebeef5;font-weight:bold;color:#409eff;">' + u.user_id + '</td>'
-                + '<td style="padding:9px 8px;border-bottom:1px solid #ebeef5;color:#303133;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (u.user_name || '-') + '">' + (u.user_name || '-') + '</td>'
+	            var u = data[i];
+	            var srColor = u.success_rate >= 80 ? '#67c23a' : (u.success_rate >= 50 ? '#e6a23c' : '#f56c6c');
+	            var bg = i % 2 === 0 ? '#fff' : '#fafafa';
+	            var refundColor = u.refund_money > 0 ? '#f56c6c' : '#909399';
+	            var userName = escapeHtml(u.user_name || '-');
+	            var row = '<tr style="background:' + bg + ';" onmouseover="this.style.background=\'#ecf5ff\'" onmouseout="this.style.background=\'' + bg + '\'">'
+	                + '<td style="padding:9px 12px;border-bottom:1px solid #ebeef5;font-weight:bold;color:#409eff;">' + userLedgerLink(u.user_id) + '</td>'
+	                + '<td style="padding:9px 8px;border-bottom:1px solid #ebeef5;color:#303133;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + userName + '">' + userName + '</td>'
                 + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#9b59b6;font-weight:bold;">¥' + (u.points_balance || 0) + '</span></td>'
                 + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#409eff;font-weight:bold;">¥' + (u.cash_balance || 0) + '</span></td>'
                 + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#67c23a;font-weight:bold;">¥' + (u.balance_total || 0) + '</span></td>'
@@ -565,10 +658,10 @@ HTML;
         }
 
         for (var i = 0; i < data.length; i++) {
-            var u = data[i];
-            var refundColor = u.refund_money > 0 ? '#f56c6c' : '#909399';
-            var row = '<tr>'
-                + '<td><div class="table-cell">' + u.user_id + '</div></td>'
+	            var u = data[i];
+	            var refundColor = u.refund_money > 0 ? '#f56c6c' : '#909399';
+	            var row = '<tr>'
+	                + '<td><div class="table-cell">' + userLedgerLink(u.user_id) + '</div></td>'
                 + '<td><div class="table-cell"><span style="color:#9b59b6;font-weight:bold">¥' + (u.points_balance || 0) + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:#409eff;font-weight:bold">¥' + (u.cash_balance || 0) + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:#67c23a;font-weight:bold">¥' + (u.balance_total || 0) + '</span></div></td>'
