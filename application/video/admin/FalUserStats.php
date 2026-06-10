@@ -11,7 +11,7 @@ class FalUserStats extends Admin {
     public function index()
     {
         $minutes = input('param.minutes', 60, 'intval');
-        if (!in_array($minutes, [60, 120, 360, 1440])) {
+        if (!in_array($minutes, [60, 120, 360, 1440, 4320, 10080, 43200])) {
             $minutes = 60;
         }
 
@@ -77,7 +77,7 @@ class FalUserStats extends Admin {
     public function ajaxData()
     {
         $minutes = input('param.minutes', 60, 'intval');
-        if (!in_array($minutes, [60, 120, 360, 1440])) {
+        if (!in_array($minutes, [60, 120, 360, 1440, 4320, 10080, 43200])) {
             $minutes = 60;
         }
 
@@ -356,6 +356,9 @@ class FalUserStats extends Admin {
             120  => '最近2小时',
             360  => '最近6小时',
             1440 => '最近24小时',
+            4320 => '最近3天',
+            10080 => '最近7天',
+            43200 => '最近30天',
         ];
 
         $html = '<div style="margin-bottom:12px;padding:10px 14px;background:#f5f7fa;border-radius:6px;">';
@@ -592,6 +595,9 @@ HTML;
             120  => '最近 2 小时',
             360  => '最近 6 小时',
             1440 => '最近 24 小时',
+            4320 => '最近 3 天',
+            10080 => '最近 7 天',
+            43200 => '最近 30 天',
         ];
         $rangeLabel = $minutesLabels[$minutes] ?? "最近 {$minutes} 分钟";
 
