@@ -48,14 +48,14 @@ class FalUserStats extends Admin {
             ->setHeight('auto')
             ->addColumns([
                 ['user_id', '用户ID'],
-                ['points_balance', '积分余额', 'callback', function($value){
-                    return "<span style='color:#9b59b6;font-weight:bold'>{$value}</span>";
+                ['points_balance', '积分余额(元)', 'callback', function($value){
+                    return "<span style='color:#9b59b6;font-weight:bold'>¥{$value}</span>";
                 }],
-                ['cash_balance', '现金积分', 'callback', function($value){
-                    return "<span style='color:#409eff;font-weight:bold'>{$value}</span>";
+                ['cash_balance', '现金积分(元)', 'callback', function($value){
+                    return "<span style='color:#409eff;font-weight:bold'>¥{$value}</span>";
                 }],
-                ['balance_total', '余额汇总', 'callback', function($value){
-                    return "<span style='color:#67c23a;font-weight:bold'>{$value}</span>";
+                ['balance_total', '余额汇总(元)', 'callback', function($value){
+                    return "<span style='color:#67c23a;font-weight:bold'>¥{$value}</span>";
                 }],
                 ['task_count', '任务总数', 'callback', function($value){
                     return "<span style='font-weight:bold;color:#409eff;'>{$value}</span>";
@@ -192,12 +192,14 @@ class FalUserStats extends Admin {
             $userProfile = isset($userProfiles[$uid]) ? $userProfiles[$uid] : [];
             $pointsBalance = isset($userProfile['points_balance']) ? floatval($userProfile['points_balance']) : 0;
             $cashBalance = isset($userProfile['cash_balance']) ? floatval($userProfile['cash_balance']) : 0;
+            $pointsBalanceYuan = round($pointsBalance / 100, 2);
+            $cashBalanceYuan = round($cashBalance / 100, 2);
             $userStatsData[] = [
                 'user_id'         => $uid,
                 'user_name'       => isset($userProfile['name']) ? $userProfile['name'] : '-',
-                'points_balance'  => $pointsBalance,
-                'cash_balance'    => $cashBalance,
-                'balance_total'   => $pointsBalance + $cashBalance,
+                'points_balance'  => $pointsBalanceYuan,
+                'cash_balance'    => $cashBalanceYuan,
+                'balance_total'   => round(($pointsBalance + $cashBalance) / 100, 2),
                 'task_count'      => $t,
                 'success_count'   => $s,
                 'failed_count'    => $f,
@@ -255,9 +257,11 @@ class FalUserStats extends Admin {
         foreach ($rows as &$row) {
             $uid = intval($row['user_id']);
             $profile = isset($userProfiles[$uid]) ? $userProfiles[$uid] : [];
-            $row['points_balance'] = isset($profile['points_balance']) ? floatval($profile['points_balance']) : 0;
-            $row['cash_balance'] = isset($profile['cash_balance']) ? floatval($profile['cash_balance']) : 0;
-            $row['balance_total'] = $row['points_balance'] + $row['cash_balance'];
+            $pointsBalance = isset($profile['points_balance']) ? floatval($profile['points_balance']) : 0;
+            $cashBalance = isset($profile['cash_balance']) ? floatval($profile['cash_balance']) : 0;
+            $row['points_balance'] = round($pointsBalance / 100, 2);
+            $row['cash_balance'] = round($cashBalance / 100, 2);
+            $row['balance_total'] = round(($pointsBalance + $cashBalance) / 100, 2);
         }
         unset($row);
 
@@ -398,9 +402,9 @@ class FalUserStats extends Admin {
                 <tr style="background:#f5f7fa;">
                     <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;cursor:pointer;" onclick="sortUserTable('user_id')">用户ID ↕</th>
                     <th style="padding:10px 8px;text-align:left;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;">用户名称</th>
-                    <th style="padding:10px 8px;text-align:right;border-bottom:2px solid #ebeef5;color:#9b59b6;font-weight:600;cursor:pointer;" onclick="sortUserTable('points_balance')">积分余额 ↕</th>
-                    <th style="padding:10px 8px;text-align:right;border-bottom:2px solid #ebeef5;color:#409eff;font-weight:600;cursor:pointer;" onclick="sortUserTable('cash_balance')">现金积分 ↕</th>
-                    <th style="padding:10px 8px;text-align:right;border-bottom:2px solid #ebeef5;color:#67c23a;font-weight:600;cursor:pointer;" onclick="sortUserTable('balance_total')">余额汇总 ↕</th>
+                    <th style="padding:10px 8px;text-align:right;border-bottom:2px solid #ebeef5;color:#9b59b6;font-weight:600;cursor:pointer;" onclick="sortUserTable('points_balance')">积分余额(元) ↕</th>
+                    <th style="padding:10px 8px;text-align:right;border-bottom:2px solid #ebeef5;color:#409eff;font-weight:600;cursor:pointer;" onclick="sortUserTable('cash_balance')">现金积分(元) ↕</th>
+                    <th style="padding:10px 8px;text-align:right;border-bottom:2px solid #ebeef5;color:#67c23a;font-weight:600;cursor:pointer;" onclick="sortUserTable('balance_total')">余额汇总(元) ↕</th>
                     <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;cursor:pointer;" onclick="sortUserTable('task_count')">任务数 ↕</th>
                     <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #ebeef5;color:#67c23a;font-weight:600;cursor:pointer;" onclick="sortUserTable('success_count')">成功 ↕</th>
                     <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #ebeef5;color:#f56c6c;font-weight:600;cursor:pointer;" onclick="sortUserTable('failed_count')">失败 ↕</th>
@@ -501,9 +505,9 @@ HTML;
             var row = '<tr style="background:' + bg + ';" onmouseover="this.style.background=\'#ecf5ff\'" onmouseout="this.style.background=\'' + bg + '\'">'
                 + '<td style="padding:9px 12px;border-bottom:1px solid #ebeef5;font-weight:bold;color:#409eff;">' + u.user_id + '</td>'
                 + '<td style="padding:9px 8px;border-bottom:1px solid #ebeef5;color:#303133;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (u.user_name || '-') + '">' + (u.user_name || '-') + '</td>'
-                + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#9b59b6;font-weight:bold;">' + (u.points_balance || 0) + '</span></td>'
-                + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#409eff;font-weight:bold;">' + (u.cash_balance || 0) + '</span></td>'
-                + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#67c23a;font-weight:bold;">' + (u.balance_total || 0) + '</span></td>'
+                + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#9b59b6;font-weight:bold;">¥' + (u.points_balance || 0) + '</span></td>'
+                + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#409eff;font-weight:bold;">¥' + (u.cash_balance || 0) + '</span></td>'
+                + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#67c23a;font-weight:bold;">¥' + (u.balance_total || 0) + '</span></td>'
                 + '<td style="padding:9px 8px;text-align:center;border-bottom:1px solid #ebeef5;font-weight:bold;">' + u.task_count + '</td>'
                 + '<td style="padding:9px 8px;text-align:center;border-bottom:1px solid #ebeef5;color:#67c23a;font-weight:bold;">' + u.success_count + '</td>'
                 + '<td style="padding:9px 8px;text-align:center;border-bottom:1px solid #ebeef5;color:' + (u.failed_count > 0 ? '#f56c6c' : '#909399') + ';font-weight:bold;">' + u.failed_count + '</td>'
@@ -565,9 +569,9 @@ HTML;
             var refundColor = u.refund_money > 0 ? '#f56c6c' : '#909399';
             var row = '<tr>'
                 + '<td><div class="table-cell">' + u.user_id + '</div></td>'
-                + '<td><div class="table-cell"><span style="color:#9b59b6;font-weight:bold">' + (u.points_balance || 0) + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="color:#409eff;font-weight:bold">' + (u.cash_balance || 0) + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="color:#67c23a;font-weight:bold">' + (u.balance_total || 0) + '</span></div></td>'
+                + '<td><div class="table-cell"><span style="color:#9b59b6;font-weight:bold">¥' + (u.points_balance || 0) + '</span></div></td>'
+                + '<td><div class="table-cell"><span style="color:#409eff;font-weight:bold">¥' + (u.cash_balance || 0) + '</span></div></td>'
+                + '<td><div class="table-cell"><span style="color:#67c23a;font-weight:bold">¥' + (u.balance_total || 0) + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="font-weight:bold;color:#409eff;">' + u.task_count + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:' + (u.success_count > 0 ? '#67c23a' : '#909399') + ';font-weight:bold">' + u.success_count + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:' + (u.failed_count > 0 ? '#f56c6c' : '#909399') + ';font-weight:bold">' + u.failed_count + '</span></div></td>'
