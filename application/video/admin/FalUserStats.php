@@ -273,7 +273,7 @@ class FalUserStats extends Admin {
             ->where('user_id', $userId)
             ->where('points', '>', 0)
             ->field('id, points, order_id, title, source_type, created_at')
-            ->order('id desc')
+            ->order('points desc, created_at desc')
             ->limit(100)
             ->select();
 
@@ -299,7 +299,7 @@ class FalUserStats extends Admin {
             ->where('user_id', $userId)
             ->where('money', '>', 0)
             ->field('id, money, order_id, title, transaction_type, time')
-            ->order('id desc')
+            ->order('money desc, time desc')
             ->limit(100)
             ->select();
 
@@ -445,6 +445,9 @@ class FalUserStats extends Admin {
 .ustats-ledger-table .amount { color: #67c23a; font-weight: 700; text-align: right; white-space: nowrap; }
 .ustats-ledger-table .muted { color: #909399; }
 .ustats-ledger-table .clip { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ustats-ledger-sort { cursor: pointer; user-select: none; }
+.ustats-ledger-sort .sort-mark { margin-left: 4px; color: #909399; font-weight: 400; }
+.ustats-ledger-sort.active .sort-mark { color: #409eff; font-weight: 700; }
 .ustats-user-link { color: #409eff; font-weight: 700; text-decoration: none; }
 .ustats-user-link:hover { text-decoration: underline; }
 </style>
@@ -549,11 +552,11 @@ class FalUserStats extends Admin {
 		                <table class="ustats-ledger-table">
 		                    <thead>
 		                        <tr>
-		                            <th style="width:150px;">时间</th>
+		                            <th class="ustats-ledger-sort" id="ustats-ledger-sort-time" style="width:150px;" onclick="sortUserLedger('time')">时间<span class="sort-mark" id="ustats-ledger-time-sort">↕</span></th>
 		                            <th style="width:90px;">来源</th>
 		                            <th>说明</th>
 		                            <th style="width:160px;">订单号</th>
-		                            <th style="width:110px;text-align:right;">入账金额(元)</th>
+		                            <th class="ustats-ledger-sort" id="ustats-ledger-sort-amount" style="width:110px;text-align:right;" onclick="sortUserLedger('amount')">入账金额(元)<span class="sort-mark" id="ustats-ledger-amount-sort">↓</span></th>
 		                        </tr>
 		                    </thead>
 		                    <tbody id="ustats-ledger-body">
@@ -630,7 +633,7 @@ HTML;
 		    var allUserStats = [];
 		    var currentSort = { field: 'task_count', asc: false };
 		    var ledgerDataUrl = '{$ledgerDataUrl}';
-		    var ledgerState = { userId: 0, type: 'points', cache: {} };
+		    var ledgerState = { userId: 0, type: 'points', cache: {}, sortField: 'amount', sortAsc: false };
 
 	    function escapeHtml(value) {
 	        return String(value || '').replace(/[&<>"']/g, function(ch) {
@@ -679,6 +682,50 @@ HTML;
 		        body.innerHTML = html;
 		    }
 
+		    function setLedgerSortHeader() {
+		        var timeHead = document.getElementById('ustats-ledger-sort-time');
+		        var amountHead = document.getElementById('ustats-ledger-sort-amount');
+		        var timeMark = document.getElementById('ustats-ledger-time-sort');
+		        var amountMark = document.getElementById('ustats-ledger-amount-sort');
+		        if (timeHead) {
+		            timeHead.className = 'ustats-ledger-sort' + (ledgerState.sortField === 'time' ? ' active' : '');
+		        }
+		        if (amountHead) {
+		            amountHead.className = 'ustats-ledger-sort' + (ledgerState.sortField === 'amount' ? ' active' : '');
+		        }
+		        if (timeMark) {
+		            timeMark.textContent = ledgerState.sortField === 'time' ? (ledgerState.sortAsc ? '↑' : '↓') : '↕';
+		        }
+		        if (amountMark) {
+		            amountMark.textContent = ledgerState.sortField === 'amount' ? (ledgerState.sortAsc ? '↑' : '↓') : '↕';
+		        }
+		    }
+
+		    function getLedgerSortedRows(rows) {
+		        var sorted = (rows || []).slice();
+		        sorted.sort(function(a, b) {
+		            var result = 0;
+		            if (ledgerState.sortField === 'time') {
+		                result = String(a.time || '').localeCompare(String(b.time || ''));
+		                if (result === 0) {
+		                    result = (parseFloat(a.amount_yuan) || 0) - (parseFloat(b.amount_yuan) || 0);
+		                }
+		            } else {
+		                result = (parseFloat(a.amount_yuan) || 0) - (parseFloat(b.amount_yuan) || 0);
+		                if (result === 0) {
+		                    result = String(a.time || '').localeCompare(String(b.time || ''));
+		                }
+		            }
+		            return ledgerState.sortAsc ? result : -result;
+		        });
+		        return sorted;
+		    }
+
+		    function renderCurrentLedgerRows() {
+		        setLedgerSortHeader();
+		        renderLedgerRows(getLedgerSortedRows(ledgerState.cache[ledgerState.type] || []));
+		    }
+
 		    function loadLedgerRows(type) {
 		        var body = document.getElementById('ustats-ledger-body');
 		        if (!body || !ledgerState.userId) return;
@@ -687,10 +734,11 @@ HTML;
 		        ledgerState.type = type;
 
 		        if (ledgerState.cache[type]) {
-		            renderLedgerRows(ledgerState.cache[type]);
+		            renderCurrentLedgerRows();
 		            return;
 		        }
 
+		        setLedgerSortHeader();
 		        body.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px;">加载中...</td></tr>';
 		        $.ajax({
 		            url: ledgerDataUrl,
@@ -705,7 +753,7 @@ HTML;
 		                }
 		                var rows = (res.data && res.data.rows) ? res.data.rows : [];
 		                ledgerState.cache[type] = rows;
-		                renderLedgerRows(rows);
+		                renderCurrentLedgerRows();
 		            },
 		            error: function() {
 		                if (ledgerState.type !== type) return;
@@ -719,6 +767,17 @@ HTML;
 		        loadLedgerRows(type);
 		    };
 
+		    window.sortUserLedger = function(field) {
+		        if (field !== 'amount' && field !== 'time') return;
+		        if (ledgerState.sortField === field) {
+		            ledgerState.sortAsc = !ledgerState.sortAsc;
+		        } else {
+		            ledgerState.sortField = field;
+		            ledgerState.sortAsc = false;
+		        }
+		        renderCurrentLedgerRows();
+		    };
+
 		    window.openUserLedger = function(userId) {
 		        var uid = parseInt(userId, 10) || 0;
 		        if (!uid) return;
@@ -727,7 +786,7 @@ HTML;
 		        var subtitle = document.getElementById('ustats-ledger-subtitle');
 		        if (!mask || !subtitle) return;
 
-		        ledgerState = { userId: uid, type: 'points', cache: {} };
+		        ledgerState = { userId: uid, type: 'points', cache: {}, sortField: 'amount', sortAsc: false };
 		        subtitle.textContent = '用户ID：' + uid + '（仅展示入账记录）';
 		        mask.style.display = 'flex';
 		        loadLedgerRows('points');
