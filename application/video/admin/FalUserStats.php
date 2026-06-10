@@ -15,27 +15,6 @@ class FalUserStats extends Admin {
             $minutes = 60;
         }
 
-        $startTime = date('Y-m-d H:i:s', strtotime("-{$minutes} minutes"));
-
-        $dataList = FalTasksModel::where('created_at', '>=', $startTime)
-            ->field([
-                'user_id',
-                'COUNT(*) as task_count',
-                'SUM(CASE WHEN status = "completed" THEN 1 ELSE 0 END) as success_count',
-                'SUM(CASE WHEN status = "failed" THEN 1 ELSE 0 END) as failed_count',
-                'SUM(CASE WHEN status IN ("pending","processing","generating","submitting") THEN 1 ELSE 0 END) as waiting_count',
-                'IFNULL(SUM(CASE WHEN is_refund = 0 THEN money ELSE 0 END), 0) as net_money',
-                'IFNULL(SUM(money), 0) as total_money',
-                'IFNULL(SUM(CASE WHEN is_refund = 1 THEN money ELSE 0 END), 0) as refund_money',
-                'MAX(created_at) as last_task_time',
-            ])
-            ->group('user_id')
-            ->order('task_count desc')
-            ->limit(500)
-            ->select();
-
-        $dataList = $this->appendUserProfileData($dataList);
-
         $contentHtml = $this->buildTimeRangeHtml($minutes) . $this->buildDashboardHtml();
         $js = $this->buildDashboardJs($minutes);
 
@@ -90,7 +69,7 @@ class FalUserStats extends Admin {
                 }],
                 ['last_task_time', '最近任务时间'],
             ])
-            ->setRowList($dataList)
+            ->setRowList([])
             ->setExtraJs($js)
             ->fetch();
     }
@@ -338,33 +317,35 @@ class FalUserStats extends Admin {
     padding: 5px 14px; border: 1px solid #dcdfe6; border-radius: 4px;
     background: #fff; color: #606266; cursor: pointer; font-size: 13px; transition: all .2s;
 }
-	.ustats-btn:hover { border-color: #409eff; color: #409eff; }
-	.ustats-btn.active { background: #409eff; color: #fff; border-color: #409eff; }
-	.ustats-ledger-mask {
-	    display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0;
-	    background: rgba(0,0,0,.28); z-index: 9999; align-items: center; justify-content: center;
-	}
-	.ustats-ledger-dialog {
-	    width: 360px; background: #fff; border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,.18);
-	    padding: 18px 20px 20px;
-	}
-	.ustats-ledger-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-	.ustats-ledger-title { font-size: 16px; font-weight: 700; color: #303133; }
-	.ustats-ledger-subtitle { margin-top: 4px; font-size: 12px; color: #909399; }
-	.ustats-ledger-close {
-	    border: 0; background: transparent; color: #909399; cursor: pointer;
-	    font-size: 22px; line-height: 22px; padding: 0;
-	}
-	.ustats-ledger-actions { display: flex; gap: 10px; margin-top: 18px; }
-	.ustats-ledger-actions a {
-	    flex: 1; display: block; padding: 9px 12px; border-radius: 4px;
-	    text-align: center; text-decoration: none; font-weight: 600;
-	}
-	.ustats-ledger-points { color: #9b59b6; background: #f7ecfb; border: 1px solid #e6c5f2; }
-	.ustats-ledger-cash { color: #409eff; background: #ecf5ff; border: 1px solid #b3d8ff; }
-	.ustats-user-link { color: #409eff; font-weight: 700; text-decoration: none; }
-	.ustats-user-link:hover { text-decoration: underline; }
-	</style>
+#builder-table-wrapper,
+.data-table-toolbar { display: none !important; }
+.ustats-btn:hover { border-color: #409eff; color: #409eff; }
+.ustats-btn.active { background: #409eff; color: #fff; border-color: #409eff; }
+.ustats-ledger-mask {
+    display: none; position: fixed; left: 0; top: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,.28); z-index: 9999; align-items: center; justify-content: center;
+}
+.ustats-ledger-dialog {
+    width: 360px; background: #fff; border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,.18);
+    padding: 18px 20px 20px;
+}
+.ustats-ledger-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ustats-ledger-title { font-size: 16px; font-weight: 700; color: #303133; }
+.ustats-ledger-subtitle { margin-top: 4px; font-size: 12px; color: #909399; }
+.ustats-ledger-close {
+    border: 0; background: transparent; color: #909399; cursor: pointer;
+    font-size: 22px; line-height: 22px; padding: 0;
+}
+.ustats-ledger-actions { display: flex; gap: 10px; margin-top: 18px; }
+.ustats-ledger-actions a {
+    flex: 1; display: block; padding: 9px 12px; border-radius: 4px;
+    text-align: center; text-decoration: none; font-weight: 600;
+}
+.ustats-ledger-points { color: #9b59b6; background: #f7ecfb; border: 1px solid #e6c5f2; }
+.ustats-ledger-cash { color: #409eff; background: #ecf5ff; border: 1px solid #b3d8ff; }
+.ustats-user-link { color: #409eff; font-weight: 700; text-decoration: none; }
+.ustats-user-link:hover { text-decoration: underline; }
+</style>
 
 <div class="ustats-wrap">
     <div class="ustats-cards" id="ustats-cards">
@@ -646,38 +627,6 @@ HTML;
         renderUserTable(getFilteredSorted());
     };
 
-    // ZBuilder table update
-    function updateZBuilderTable(data) {
-        var tbody = $('#builder-table-main tbody');
-        if (!tbody.length) return;
-        tbody.empty();
-
-        if (!data || data.length === 0) {
-            tbody.append('<tr><td colspan="12" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>');
-            return;
-        }
-
-        for (var i = 0; i < data.length; i++) {
-	            var u = data[i];
-	            var refundColor = u.refund_money > 0 ? '#f56c6c' : '#909399';
-	            var row = '<tr>'
-	                + '<td><div class="table-cell">' + userLedgerLink(u.user_id) + '</div></td>'
-                + '<td><div class="table-cell"><span style="color:#9b59b6;font-weight:bold">¥' + (u.points_balance || 0) + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="color:#409eff;font-weight:bold">¥' + (u.cash_balance || 0) + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="color:#67c23a;font-weight:bold">¥' + (u.balance_total || 0) + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="font-weight:bold;color:#409eff;">' + u.task_count + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="color:' + (u.success_count > 0 ? '#67c23a' : '#909399') + ';font-weight:bold">' + u.success_count + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="color:' + (u.failed_count > 0 ? '#f56c6c' : '#909399') + ';font-weight:bold">' + u.failed_count + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="color:' + (u.waiting_count > 0 ? '#e6a23c' : '#909399') + '">' + u.waiting_count + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="color:#fc8452;font-weight:bold">¥' + u.total_money_yuan + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="color:' + refundColor + ';font-weight:bold">¥' + u.refund_money_yuan + '</span></div></td>'
-                + '<td><div class="table-cell"><span style="color:#67c23a;font-weight:bold">¥' + u.net_money_yuan + '</span></div></td>'
-                + '<td><div class="table-cell">' + (u.last_task_time || '-') + '</div></td>'
-                + '</tr>';
-            tbody.append(row);
-        }
-    }
-
     var autoRefresh = true;
     var countdown = 10;
 
@@ -716,7 +665,6 @@ HTML;
 
                 allUserStats = d.userStats;
                 renderUserTable(getFilteredSorted());
-                updateZBuilderTable(d.userStats);
 
                 $('#ustats-update-time').text('最后更新: ' + res.time);
                 $('#ustats-status-text').text('数据已更新');
