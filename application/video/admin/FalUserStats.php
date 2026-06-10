@@ -34,6 +34,8 @@ class FalUserStats extends Admin {
             ->limit(500)
             ->select();
 
+        $dataList = $this->appendUserProfileData($dataList);
+
         $contentHtml = $this->buildTimeRangeHtml($minutes) . $this->buildDashboardHtml();
         $js = $this->buildDashboardJs($minutes);
 
@@ -46,6 +48,9 @@ class FalUserStats extends Admin {
             ->setHeight('auto')
             ->addColumns([
                 ['user_id', '用户ID'],
+                ['points_balance', '积分余额', 'callback', function($value){
+                    return "<span style='color:#9b59b6;font-weight:bold'>{$value}</span>";
+                }],
                 ['task_count', '任务总数', 'callback', function($value){
                     return "<span style='font-weight:bold;color:#409eff;'>{$value}</span>";
                 }],
@@ -170,14 +175,7 @@ class FalUserStats extends Admin {
             ->limit(500)
             ->select();
 
-        $userIds = array_column($userStats->toArray(), 'user_id');
-        $userNames = [];
-        if (!empty($userIds)) {
-            $users = Db::connect('translate')->table('ts_users')
-                ->whereIn('id', $userIds)
-                ->column('name', 'id');
-            $userNames = $users;
-        }
+        $userProfiles = $this->getUserProfiles(array_column($userStats->toArray(), 'user_id'));
 
         $userStatsData = [];
         foreach ($userStats as $u) {
@@ -185,9 +183,11 @@ class FalUserStats extends Admin {
             $s = intval($u['success_count']);
             $f = intval($u['failed_count']);
             $uid = intval($u['user_id']);
+            $userProfile = isset($userProfiles[$uid]) ? $userProfiles[$uid] : [];
             $userStatsData[] = [
                 'user_id'         => $uid,
-                'user_name'       => isset($userNames[$uid]) ? $userNames[$uid] : '-',
+                'user_name'       => isset($userProfile['name']) ? $userProfile['name'] : '-',
+                'points_balance'  => isset($userProfile['points_balance']) ? floatval($userProfile['points_balance']) : 0,
                 'task_count'      => $t,
                 'success_count'   => $s,
                 'failed_count'    => $f,
@@ -235,6 +235,33 @@ class FalUserStats extends Admin {
             'minutes' => $minutes,
             'time' => date('Y-m-d H:i:s'),
         ]);
+    }
+
+    private function appendUserProfileData($dataList)
+    {
+        $rows = $dataList instanceof \think\Collection ? $dataList->toArray() : (array)$dataList;
+        $userProfiles = $this->getUserProfiles(array_column($rows, 'user_id'));
+
+        foreach ($rows as &$row) {
+            $uid = intval($row['user_id']);
+            $profile = isset($userProfiles[$uid]) ? $userProfiles[$uid] : [];
+            $row['points_balance'] = isset($profile['points_balance']) ? floatval($profile['points_balance']) : 0;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    private function getUserProfiles($userIds)
+    {
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        if (empty($userIds)) {
+            return [];
+        }
+
+        return Db::connect('translate')->table('ts_users')
+            ->whereIn('id', $userIds)
+            ->column('id, name, points_balance', 'id');
     }
 
     private function buildTimeRangeHtml($currentMinutes)
@@ -359,6 +386,7 @@ class FalUserStats extends Admin {
                 <tr style="background:#f5f7fa;">
                     <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;cursor:pointer;" onclick="sortUserTable('user_id')">用户ID ↕</th>
                     <th style="padding:10px 8px;text-align:left;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;">用户名称</th>
+                    <th style="padding:10px 8px;text-align:right;border-bottom:2px solid #ebeef5;color:#9b59b6;font-weight:600;cursor:pointer;" onclick="sortUserTable('points_balance')">积分余额 ↕</th>
                     <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;cursor:pointer;" onclick="sortUserTable('task_count')">任务数 ↕</th>
                     <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #ebeef5;color:#67c23a;font-weight:600;cursor:pointer;" onclick="sortUserTable('success_count')">成功 ↕</th>
                     <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #ebeef5;color:#f56c6c;font-weight:600;cursor:pointer;" onclick="sortUserTable('failed_count')">失败 ↕</th>
@@ -371,7 +399,7 @@ class FalUserStats extends Admin {
                 </tr>
             </thead>
             <tbody id="user-stats-body">
-                <tr><td colspan="11" style="text-align:center;padding:20px;color:#909399;">加载中...</td></tr>
+                <tr><td colspan="12" style="text-align:center;padding:20px;color:#909399;">加载中...</td></tr>
             </tbody>
         </table>
     </div>
@@ -447,7 +475,7 @@ HTML;
         tbody.innerHTML = '';
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>';
             return;
         }
 
@@ -459,6 +487,7 @@ HTML;
             var row = '<tr style="background:' + bg + ';" onmouseover="this.style.background=\'#ecf5ff\'" onmouseout="this.style.background=\'' + bg + '\'">'
                 + '<td style="padding:9px 12px;border-bottom:1px solid #ebeef5;font-weight:bold;color:#409eff;">' + u.user_id + '</td>'
                 + '<td style="padding:9px 8px;border-bottom:1px solid #ebeef5;color:#303133;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (u.user_name || '-') + '">' + (u.user_name || '-') + '</td>'
+                + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#9b59b6;font-weight:bold;">' + (u.points_balance || 0) + '</span></td>'
                 + '<td style="padding:9px 8px;text-align:center;border-bottom:1px solid #ebeef5;font-weight:bold;">' + u.task_count + '</td>'
                 + '<td style="padding:9px 8px;text-align:center;border-bottom:1px solid #ebeef5;color:#67c23a;font-weight:bold;">' + u.success_count + '</td>'
                 + '<td style="padding:9px 8px;text-align:center;border-bottom:1px solid #ebeef5;color:' + (u.failed_count > 0 ? '#f56c6c' : '#909399') + ';font-weight:bold;">' + u.failed_count + '</td>'
@@ -511,7 +540,7 @@ HTML;
         tbody.empty();
 
         if (!data || data.length === 0) {
-            tbody.append('<tr><td colspan="9" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>');
+            tbody.append('<tr><td colspan="10" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>');
             return;
         }
 
@@ -520,6 +549,7 @@ HTML;
             var refundColor = u.refund_money > 0 ? '#f56c6c' : '#909399';
             var row = '<tr>'
                 + '<td><div class="table-cell">' + u.user_id + '</div></td>'
+                + '<td><div class="table-cell"><span style="color:#9b59b6;font-weight:bold">' + (u.points_balance || 0) + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="font-weight:bold;color:#409eff;">' + u.task_count + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:' + (u.success_count > 0 ? '#67c23a' : '#909399') + ';font-weight:bold">' + u.success_count + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:' + (u.failed_count > 0 ? '#f56c6c' : '#909399') + ';font-weight:bold">' + u.failed_count + '</span></div></td>'
