@@ -51,6 +51,9 @@ class FalUserStats extends Admin {
                 ['points_balance', '积分余额', 'callback', function($value){
                     return "<span style='color:#9b59b6;font-weight:bold'>{$value}</span>";
                 }],
+                ['cash_balance', '现金积分', 'callback', function($value){
+                    return "<span style='color:#409eff;font-weight:bold'>{$value}</span>";
+                }],
                 ['task_count', '任务总数', 'callback', function($value){
                     return "<span style='font-weight:bold;color:#409eff;'>{$value}</span>";
                 }],
@@ -188,6 +191,7 @@ class FalUserStats extends Admin {
                 'user_id'         => $uid,
                 'user_name'       => isset($userProfile['name']) ? $userProfile['name'] : '-',
                 'points_balance'  => isset($userProfile['points_balance']) ? floatval($userProfile['points_balance']) : 0,
+                'cash_balance'    => isset($userProfile['cash_balance']) ? floatval($userProfile['cash_balance']) : 0,
                 'task_count'      => $t,
                 'success_count'   => $s,
                 'failed_count'    => $f,
@@ -246,6 +250,7 @@ class FalUserStats extends Admin {
             $uid = intval($row['user_id']);
             $profile = isset($userProfiles[$uid]) ? $userProfiles[$uid] : [];
             $row['points_balance'] = isset($profile['points_balance']) ? floatval($profile['points_balance']) : 0;
+            $row['cash_balance'] = isset($profile['cash_balance']) ? floatval($profile['cash_balance']) : 0;
         }
         unset($row);
 
@@ -261,7 +266,7 @@ class FalUserStats extends Admin {
 
         return Db::connect('translate')->table('ts_users')
             ->whereIn('id', $userIds)
-            ->column('id, name, points_balance', 'id');
+            ->column('id, name, points_balance, cash_balance', 'id');
     }
 
     private function buildTimeRangeHtml($currentMinutes)
@@ -387,6 +392,7 @@ class FalUserStats extends Admin {
                     <th style="padding:10px 12px;text-align:left;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;cursor:pointer;" onclick="sortUserTable('user_id')">用户ID ↕</th>
                     <th style="padding:10px 8px;text-align:left;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;">用户名称</th>
                     <th style="padding:10px 8px;text-align:right;border-bottom:2px solid #ebeef5;color:#9b59b6;font-weight:600;cursor:pointer;" onclick="sortUserTable('points_balance')">积分余额 ↕</th>
+                    <th style="padding:10px 8px;text-align:right;border-bottom:2px solid #ebeef5;color:#409eff;font-weight:600;cursor:pointer;" onclick="sortUserTable('cash_balance')">现金积分 ↕</th>
                     <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #ebeef5;color:#606266;font-weight:600;cursor:pointer;" onclick="sortUserTable('task_count')">任务数 ↕</th>
                     <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #ebeef5;color:#67c23a;font-weight:600;cursor:pointer;" onclick="sortUserTable('success_count')">成功 ↕</th>
                     <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #ebeef5;color:#f56c6c;font-weight:600;cursor:pointer;" onclick="sortUserTable('failed_count')">失败 ↕</th>
@@ -399,7 +405,7 @@ class FalUserStats extends Admin {
                 </tr>
             </thead>
             <tbody id="user-stats-body">
-                <tr><td colspan="12" style="text-align:center;padding:20px;color:#909399;">加载中...</td></tr>
+                <tr><td colspan="13" style="text-align:center;padding:20px;color:#909399;">加载中...</td></tr>
             </tbody>
         </table>
     </div>
@@ -475,7 +481,7 @@ HTML;
         tbody.innerHTML = '';
 
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>';
             return;
         }
 
@@ -488,6 +494,7 @@ HTML;
                 + '<td style="padding:9px 12px;border-bottom:1px solid #ebeef5;font-weight:bold;color:#409eff;">' + u.user_id + '</td>'
                 + '<td style="padding:9px 8px;border-bottom:1px solid #ebeef5;color:#303133;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (u.user_name || '-') + '">' + (u.user_name || '-') + '</td>'
                 + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#9b59b6;font-weight:bold;">' + (u.points_balance || 0) + '</span></td>'
+                + '<td style="padding:9px 8px;text-align:right;border-bottom:1px solid #ebeef5;"><span style="color:#409eff;font-weight:bold;">' + (u.cash_balance || 0) + '</span></td>'
                 + '<td style="padding:9px 8px;text-align:center;border-bottom:1px solid #ebeef5;font-weight:bold;">' + u.task_count + '</td>'
                 + '<td style="padding:9px 8px;text-align:center;border-bottom:1px solid #ebeef5;color:#67c23a;font-weight:bold;">' + u.success_count + '</td>'
                 + '<td style="padding:9px 8px;text-align:center;border-bottom:1px solid #ebeef5;color:' + (u.failed_count > 0 ? '#f56c6c' : '#909399') + ';font-weight:bold;">' + u.failed_count + '</td>'
@@ -540,7 +547,7 @@ HTML;
         tbody.empty();
 
         if (!data || data.length === 0) {
-            tbody.append('<tr><td colspan="10" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>');
+            tbody.append('<tr><td colspan="11" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>');
             return;
         }
 
@@ -550,6 +557,7 @@ HTML;
             var row = '<tr>'
                 + '<td><div class="table-cell">' + u.user_id + '</div></td>'
                 + '<td><div class="table-cell"><span style="color:#9b59b6;font-weight:bold">' + (u.points_balance || 0) + '</span></div></td>'
+                + '<td><div class="table-cell"><span style="color:#409eff;font-weight:bold">' + (u.cash_balance || 0) + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="font-weight:bold;color:#409eff;">' + u.task_count + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:' + (u.success_count > 0 ? '#67c23a' : '#909399') + ';font-weight:bold">' + u.success_count + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:' + (u.failed_count > 0 ? '#f56c6c' : '#909399') + ';font-weight:bold">' + u.failed_count + '</span></div></td>'
