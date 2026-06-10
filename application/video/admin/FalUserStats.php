@@ -231,6 +231,93 @@ class FalUserStats extends Admin {
         ]);
     }
 
+    public function ledgerData()
+    {
+        $userId = input('param.user_id', 0, 'intval');
+        $type = input('param.type', 'points', 'trim');
+        if ($userId <= 0 || !in_array($type, ['points', 'cash'])) {
+            return json([
+                'code' => 1,
+                'msg' => '参数错误',
+                'data' => [
+                    'rows' => [],
+                ],
+            ]);
+        }
+
+        $rows = $type === 'cash'
+            ? $this->getCashLedgerRows($userId)
+            : $this->getPointsLedgerRows($userId);
+
+        return json([
+            'code' => 0,
+            'data' => [
+                'type' => $type,
+                'user_id' => $userId,
+                'rows' => $rows,
+            ],
+        ]);
+    }
+
+    private function getPointsLedgerRows($userId)
+    {
+        $sourceTypes = [
+            'recharge' => '充值',
+            'gift' => '赠送',
+            'refund' => '退款',
+            'reward' => '奖励',
+            'system' => '系统调整',
+        ];
+
+        $rows = Db::connect('translate')->table('ts_points_detail')
+            ->where('user_id', $userId)
+            ->where('points', '>', 0)
+            ->field('id, points, order_id, title, source_type, created_at')
+            ->order('id desc')
+            ->limit(100)
+            ->select();
+
+        $data = [];
+        foreach ($rows as $row) {
+            $source = isset($sourceTypes[$row['source_type']]) ? $sourceTypes[$row['source_type']] : $row['source_type'];
+            $data[] = [
+                'id' => intval($row['id']),
+                'time' => $row['created_at'],
+                'source' => $source ?: '-',
+                'title' => $row['title'] ?: '-',
+                'order_id' => $row['order_id'] ?: '-',
+                'amount_yuan' => round(floatval($row['points']) / 100, 2),
+            ];
+        }
+
+        return $data;
+    }
+
+    private function getCashLedgerRows($userId)
+    {
+        $rows = Db::connect('translate')->table('ts_financial_transactions')
+            ->where('user_id', $userId)
+            ->where('money', '>', 0)
+            ->field('id, money, order_id, title, transaction_type, time')
+            ->order('id desc')
+            ->limit(100)
+            ->select();
+
+        $data = [];
+        foreach ($rows as $row) {
+            $data[] = [
+                'id' => intval($row['id']),
+                'time' => $row['time'],
+                'source' => $row['transaction_type'] ?: '-',
+                'title' => $row['title'] ?: '-',
+                'order_id' => $row['order_id'] ?: '-',
+                'amount_yuan' => round(floatval($row['money']) / 100, 2),
+            ];
+        }
+
+        return $data;
+    }
+
     private function appendUserProfileData($dataList)
     {
         $rows = $dataList instanceof \think\Collection ? $dataList->toArray() : (array)$dataList;
@@ -326,7 +413,7 @@ class FalUserStats extends Admin {
     background: rgba(0,0,0,.28); z-index: 9999; align-items: center; justify-content: center;
 }
 .ustats-ledger-dialog {
-    width: 360px; background: #fff; border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,.18);
+    width: 760px; max-width: calc(100vw - 32px); background: #fff; border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,.18);
     padding: 18px 20px 20px;
 }
 .ustats-ledger-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -336,13 +423,28 @@ class FalUserStats extends Admin {
     border: 0; background: transparent; color: #909399; cursor: pointer;
     font-size: 22px; line-height: 22px; padding: 0;
 }
-.ustats-ledger-actions { display: flex; gap: 10px; margin-top: 18px; }
-.ustats-ledger-actions a {
-    flex: 1; display: block; padding: 9px 12px; border-radius: 4px;
-    text-align: center; text-decoration: none; font-weight: 600;
+.ustats-ledger-tabs { display: flex; gap: 10px; margin-top: 18px; }
+.ustats-ledger-tab {
+    flex: 1; padding: 9px 12px; border-radius: 4px; cursor: pointer;
+    text-align: center; font-weight: 600; background: #fff; border: 1px solid #dcdfe6;
 }
-.ustats-ledger-points { color: #9b59b6; background: #f7ecfb; border: 1px solid #e6c5f2; }
-.ustats-ledger-cash { color: #409eff; background: #ecf5ff; border: 1px solid #b3d8ff; }
+.ustats-ledger-tab.points.active { color: #9b59b6; background: #f7ecfb; border-color: #e6c5f2; }
+.ustats-ledger-tab.cash.active { color: #409eff; background: #ecf5ff; border-color: #b3d8ff; }
+.ustats-ledger-table-wrap {
+    margin-top: 14px; border: 1px solid #ebeef5; border-radius: 4px;
+    max-height: 420px; overflow: auto;
+}
+.ustats-ledger-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ustats-ledger-table th {
+    position: sticky; top: 0; background: #f5f7fa; z-index: 1;
+    color: #606266; font-weight: 600; text-align: left;
+}
+.ustats-ledger-table th,
+.ustats-ledger-table td { padding: 9px 10px; border-bottom: 1px solid #ebeef5; }
+.ustats-ledger-table td { color: #303133; }
+.ustats-ledger-table .amount { color: #67c23a; font-weight: 700; text-align: right; white-space: nowrap; }
+.ustats-ledger-table .muted { color: #909399; }
+.ustats-ledger-table .clip { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ustats-user-link { color: #409eff; font-weight: 700; text-decoration: none; }
 .ustats-user-link:hover { text-decoration: underline; }
 </style>
@@ -430,21 +532,37 @@ class FalUserStats extends Admin {
 	        </table>
 	    </div>
 
-	    <div class="ustats-ledger-mask" id="ustats-ledger-mask" onclick="closeUserLedger()">
-	        <div class="ustats-ledger-dialog" onclick="event.stopPropagation();">
-	            <div class="ustats-ledger-head">
-	                <div>
-	                    <div class="ustats-ledger-title">用户明细账单</div>
-	                    <div class="ustats-ledger-subtitle" id="ustats-ledger-subtitle">用户ID：-</div>
-	                </div>
-	                <button type="button" class="ustats-ledger-close" onclick="closeUserLedger()" aria-label="关闭">&times;</button>
-	            </div>
-	            <div class="ustats-ledger-actions">
-	                <a href="javascript:void(0);" target="_blank" id="ustats-ledger-points" class="ustats-ledger-points">积分明细</a>
-	                <a href="javascript:void(0);" target="_blank" id="ustats-ledger-cash" class="ustats-ledger-cash">现金明细</a>
-	            </div>
-	        </div>
-	    </div>
+		    <div class="ustats-ledger-mask" id="ustats-ledger-mask" onclick="closeUserLedger()">
+		        <div class="ustats-ledger-dialog" onclick="event.stopPropagation();">
+		            <div class="ustats-ledger-head">
+		                <div>
+		                    <div class="ustats-ledger-title">用户明细账单</div>
+		                    <div class="ustats-ledger-subtitle" id="ustats-ledger-subtitle">用户ID：-</div>
+		                </div>
+		                <button type="button" class="ustats-ledger-close" onclick="closeUserLedger()" aria-label="关闭">&times;</button>
+		            </div>
+		            <div class="ustats-ledger-tabs">
+		                <button type="button" id="ustats-ledger-tab-points" class="ustats-ledger-tab points active" onclick="switchUserLedgerTab('points')">积分明细</button>
+		                <button type="button" id="ustats-ledger-tab-cash" class="ustats-ledger-tab cash" onclick="switchUserLedgerTab('cash')">现金明细</button>
+		            </div>
+		            <div class="ustats-ledger-table-wrap">
+		                <table class="ustats-ledger-table">
+		                    <thead>
+		                        <tr>
+		                            <th style="width:150px;">时间</th>
+		                            <th style="width:90px;">来源</th>
+		                            <th>说明</th>
+		                            <th style="width:160px;">订单号</th>
+		                            <th style="width:110px;text-align:right;">入账金额(元)</th>
+		                        </tr>
+		                    </thead>
+		                    <tbody id="ustats-ledger-body">
+		                        <tr><td colspan="5" class="muted" style="text-align:center;padding:24px;">暂无数据</td></tr>
+		                    </tbody>
+		                </table>
+		            </div>
+		        </div>
+		    </div>
 
 	    <div class="ustats-status-bar">
         <div class="status-left">
@@ -464,8 +582,7 @@ HTML;
     private function buildDashboardJs($minutes)
     {
         $ajaxUrl = url('ajaxData', ['minutes' => $minutes]);
-        $pointsDetailUrl = url('video/points_detail/index');
-        $cashDetailUrl = url('video/financial_transactions/index');
+        $ledgerDataUrl = url('ledgerData');
 
         $minutesLabels = [
             60   => '最近 1 小时',
@@ -510,10 +627,10 @@ HTML;
         ]
     });
 
-	    var allUserStats = [];
-	    var currentSort = { field: 'task_count', asc: false };
-	    var pointsDetailUrl = '{$pointsDetailUrl}';
-	    var cashDetailUrl = '{$cashDetailUrl}';
+		    var allUserStats = [];
+		    var currentSort = { field: 'task_count', asc: false };
+		    var ledgerDataUrl = '{$ledgerDataUrl}';
+		    var ledgerState = { userId: 0, type: 'points', cache: {} };
 
 	    function escapeHtml(value) {
 	        return String(value || '').replace(/[&<>"']/g, function(ch) {
@@ -521,37 +638,100 @@ HTML;
 	        });
 	    }
 
-	    function buildSearchUrl(baseUrl, pairs) {
-	        var search = [];
-	        var ops = [];
-	        for (var i = 0; i < pairs.length; i++) {
-	            search.push(pairs[i].field + '=' + pairs[i].value);
-	            ops.push(pairs[i].field + '=eq');
-	        }
-	        var separator = baseUrl.indexOf('?') === -1 ? '?' : '&';
-	        return baseUrl + separator + '_s=' + encodeURIComponent(search.join('|')) + '&_o=' + encodeURIComponent(ops.join('|'));
-	    }
+		    function userLedgerLink(userId) {
+		        var uid = parseInt(userId, 10) || 0;
+		        return '<a href="javascript:void(0);" class="ustats-user-link" onclick="openUserLedger(' + uid + ');return false;" title="查看积分明细和现金明细">' + uid + '</a>';
+		    }
 
-	    function userLedgerLink(userId) {
-	        var uid = parseInt(userId, 10) || 0;
-	        return '<a href="javascript:void(0);" class="ustats-user-link" onclick="openUserLedger(' + uid + ');return false;" title="查看积分明细和现金明细">' + uid + '</a>';
-	    }
+		    function setLedgerTab(type) {
+		        var pointsTab = document.getElementById('ustats-ledger-tab-points');
+		        var cashTab = document.getElementById('ustats-ledger-tab-cash');
+		        if (pointsTab) {
+		            pointsTab.className = 'ustats-ledger-tab points' + (type === 'points' ? ' active' : '');
+		        }
+		        if (cashTab) {
+		            cashTab.className = 'ustats-ledger-tab cash' + (type === 'cash' ? ' active' : '');
+		        }
+		    }
 
-	    window.openUserLedger = function(userId) {
-	        var uid = parseInt(userId, 10) || 0;
-	        if (!uid) return;
+		    function renderLedgerRows(rows) {
+		        var body = document.getElementById('ustats-ledger-body');
+		        if (!body) return;
 
-	        var mask = document.getElementById('ustats-ledger-mask');
-	        var subtitle = document.getElementById('ustats-ledger-subtitle');
-	        var pointsLink = document.getElementById('ustats-ledger-points');
-	        var cashLink = document.getElementById('ustats-ledger-cash');
-	        if (!mask || !subtitle || !pointsLink || !cashLink) return;
+		        if (!rows || rows.length === 0) {
+		            body.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px;">暂无入账记录</td></tr>';
+		            return;
+		        }
 
-	        subtitle.textContent = '用户ID：' + uid;
-	        pointsLink.href = buildSearchUrl(pointsDetailUrl, [{ field: 'user_id', value: uid }]);
-	        cashLink.href = buildSearchUrl(cashDetailUrl, [{ field: 'user_id', value: uid }]);
-	        mask.style.display = 'flex';
-	    };
+		        var html = '';
+		        for (var i = 0; i < rows.length; i++) {
+		            var row = rows[i];
+		            var title = row.title || '-';
+		            var orderId = row.order_id || '-';
+		            html += '<tr>'
+		                + '<td class="muted">' + escapeHtml(row.time || '-') + '</td>'
+		                + '<td>' + escapeHtml(row.source || '-') + '</td>'
+		                + '<td><div class="clip" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</div></td>'
+		                + '<td><div class="clip" title="' + escapeHtml(orderId) + '">' + escapeHtml(orderId) + '</div></td>'
+		                + '<td class="amount">+¥' + escapeHtml(row.amount_yuan || 0) + '</td>'
+		                + '</tr>';
+		        }
+		        body.innerHTML = html;
+		    }
+
+		    function loadLedgerRows(type) {
+		        var body = document.getElementById('ustats-ledger-body');
+		        if (!body || !ledgerState.userId) return;
+
+		        setLedgerTab(type);
+		        ledgerState.type = type;
+
+		        if (ledgerState.cache[type]) {
+		            renderLedgerRows(ledgerState.cache[type]);
+		            return;
+		        }
+
+		        body.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px;">加载中...</td></tr>';
+		        $.ajax({
+		            url: ledgerDataUrl,
+		            type: 'GET',
+		            dataType: 'json',
+		            data: { user_id: ledgerState.userId, type: type },
+		            success: function(res) {
+		                if (ledgerState.type !== type) return;
+		                if (!res || res.code !== 0) {
+		                    body.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px;">加载失败</td></tr>';
+		                    return;
+		                }
+		                var rows = (res.data && res.data.rows) ? res.data.rows : [];
+		                ledgerState.cache[type] = rows;
+		                renderLedgerRows(rows);
+		            },
+		            error: function() {
+		                if (ledgerState.type !== type) return;
+		                body.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px;">加载失败</td></tr>';
+		            }
+		        });
+		    }
+
+		    window.switchUserLedgerTab = function(type) {
+		        if (type !== 'points' && type !== 'cash') return;
+		        loadLedgerRows(type);
+		    };
+
+		    window.openUserLedger = function(userId) {
+		        var uid = parseInt(userId, 10) || 0;
+		        if (!uid) return;
+
+		        var mask = document.getElementById('ustats-ledger-mask');
+		        var subtitle = document.getElementById('ustats-ledger-subtitle');
+		        if (!mask || !subtitle) return;
+
+		        ledgerState = { userId: uid, type: 'points', cache: {} };
+		        subtitle.textContent = '用户ID：' + uid + '（仅展示入账记录）';
+		        mask.style.display = 'flex';
+		        loadLedgerRows('points');
+		    };
 
 	    window.closeUserLedger = function() {
 	        var mask = document.getElementById('ustats-ledger-mask');
