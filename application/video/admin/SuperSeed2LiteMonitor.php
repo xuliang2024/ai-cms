@@ -44,6 +44,7 @@ class SuperSeed2LiteMonitor extends Admin {
             ->js("libs/echart/echarts.min")
             ->setExtraHtml($contentHtml, 'toolbar_top')
             ->setHeight('auto')
+            ->hideCheckbox()
             ->addColumns([
                 ['task_id', 'Task ID', 'callback', function($value){
                     $escaped = htmlspecialchars($value);
@@ -59,16 +60,13 @@ class SuperSeed2LiteMonitor extends Admin {
                     $color = $colors[$value] ?? '#909399';
                     return "<span style='color:{$color};font-weight:bold'>{$value}</span>";
                 }],
-                ['_detail', '详情', 'callback', function($value){
-                    return $value ?: '-';
-                }],
-                ['is_refund', '退款', 'callback', function($value){
-                    return $value ? '<span style="color:#f56c6c">已退款</span>' : '-';
-                }],
                 ['created_at', '创建时间'],
                 ['completed_at', '完成时间'],
                 ['_duration_sec', '完成耗时(秒)', 'callback', function($value){
                     return $value === null || $value === '' ? '-' : "<span style='color:#67c23a;font-weight:bold'>{$value}秒</span>";
+                }],
+                ['_detail', '详情', 'callback', function($value){
+                    return $value ?: '-';
                 }],
             ])
             ->setRowList($dataList)
@@ -159,7 +157,7 @@ class SuperSeed2LiteMonitor extends Admin {
 
         $recentTasks = FalTasksModel::where('app_name', $this->appName)
             ->where('created_at', '>=', $startTime)
-            ->field('id, task_id, user_id, money, status, is_refund, created_at, completed_at, output_params')
+            ->field('task_id, user_id, money, status, created_at, completed_at, output_params')
             ->order('created_at desc')
             ->limit(200)
             ->select();
@@ -175,12 +173,10 @@ class SuperSeed2LiteMonitor extends Admin {
                 $detail = json_encode($q, JSON_UNESCAPED_UNICODE);
             }
             $taskRows[] = [
-                'id'           => $task['id'],
                 'task_id'      => $task['task_id'] ?? '',
                 'user_id'      => $task['user_id'],
                 'money'        => $task['money'],
                 'status'       => $task['status'],
-                'is_refund'    => $task['is_refund'],
                 'created_at'   => $task['created_at'],
                 'completed_at' => $task['completed_at'],
                 'duration_sec' => $this->getCompletedDurationSec($task),
@@ -487,8 +483,7 @@ HTML;
         if (!tbody.length) return;
         tbody.empty();
 
-        var hasCheckbox = $('#builder-table-head thead th').first().find('input[type=checkbox]').length > 0;
-        var colCount = hasCheckbox ? 10 : 9;
+        var colCount = 8;
 
         if (!tasks || tasks.length === 0) {
             tbody.append('<tr><td colspan="' + colCount + '" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>');
@@ -499,8 +494,6 @@ HTML;
             var t = tasks[i];
             var sColor = statusColors[t.status] || '#909399';
             var moneyColor = t.money > 0 ? '#67c23a' : '#909399';
-            var refundHtml = t.is_refund == 1 ? '<span style="color:#f56c6c">已退款</span>' : '-';
-            var checkboxTd = hasCheckbox ? '<td><div class="table-cell"><input type="checkbox" name="ids[]" value="' + t.id + '"></div></td>' : '';
             var detailHtml = renderDetail(t);
             var durationHtml = (typeof t.duration_sec === 'undefined' || t.duration_sec === null || t.duration_sec === '') ? '-' : '<span style="color:#67c23a;font-weight:bold">' + t.duration_sec + '秒</span>';
 
@@ -511,16 +504,14 @@ HTML;
                 + '</span>';
 
             var row = '<tr>'
-                + checkboxTd
                 + '<td><div class="table-cell">' + taskIdCell + '</div></td>'
                 + '<td><div class="table-cell">' + (t.user_id || '') + '</div></td>'
                 + '<td><div class="table-cell"><span style="color:' + moneyColor + '">' + (t.money || 0) + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:' + sColor + ';font-weight:bold">' + (t.status || '') + '</span></div></td>'
-                + '<td><div class="table-cell">' + detailHtml + '</div></td>'
-                + '<td><div class="table-cell">' + refundHtml + '</div></td>'
                 + '<td><div class="table-cell">' + (t.created_at || '') + '</div></td>'
                 + '<td><div class="table-cell">' + (t.completed_at || '-') + '</div></td>'
                 + '<td><div class="table-cell">' + durationHtml + '</div></td>'
+                + '<td><div class="table-cell">' + detailHtml + '</div></td>'
                 + '</tr>';
             tbody.append(row);
         }
