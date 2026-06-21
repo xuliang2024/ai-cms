@@ -63,7 +63,11 @@ class SuperSeed2LiteMonitor extends Admin {
                 ['created_at', '创建时间'],
                 ['completed_at', '完成时间'],
                 ['_duration_sec', '完成耗时(秒)', 'callback', function($value){
-                    return $value === null || $value === '' ? '-' : "<span style='color:#67c23a;font-weight:bold'>{$value}秒</span>";
+                    if ($value === null || $value === '') {
+                        return '-';
+                    }
+                    $color = intval($value) > 300 ? '#f56c6c' : '#67c23a';
+                    return "<span style='color:{$color};font-weight:bold'>{$value}秒</span>";
                 }],
                 ['_detail', '详情', 'callback', function($value){
                     return $value ?: '-';
@@ -244,7 +248,7 @@ class SuperSeed2LiteMonitor extends Admin {
         $status = $task['status'] ?? '';
         $createdAt = $task['created_at'] ?? '';
         $completedAt = $task['completed_at'] ?? '';
-        if ($status !== 'completed' || empty($createdAt) || empty($completedAt)) {
+        if (!in_array($status, ['completed', 'failed'], true) || empty($createdAt) || empty($completedAt)) {
             return null;
         }
 
@@ -495,7 +499,11 @@ HTML;
             var sColor = statusColors[t.status] || '#909399';
             var moneyColor = t.money > 0 ? '#67c23a' : '#909399';
             var detailHtml = renderDetail(t);
-            var durationHtml = (typeof t.duration_sec === 'undefined' || t.duration_sec === null || t.duration_sec === '') ? '-' : '<span style="color:#67c23a;font-weight:bold">' + t.duration_sec + '秒</span>';
+            var durationHtml = '-';
+            if (typeof t.duration_sec !== 'undefined' && t.duration_sec !== null && t.duration_sec !== '') {
+                var durationColor = Number(t.duration_sec) > 300 ? '#f56c6c' : '#67c23a';
+                durationHtml = '<span style="color:' + durationColor + ';font-weight:bold">' + t.duration_sec + '秒</span>';
+            }
 
             var taskIdEsc = $('<span>').text(t.task_id || '').html();
             var taskIdCell = '<span style="display:inline-flex;align-items:center;gap:4px;">'
