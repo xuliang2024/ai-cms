@@ -30,6 +30,7 @@ class SuperSeed2LiteMonitor extends Admin {
         foreach ($rawList as $row) {
             $item = $row->toArray();
             $item['_detail'] = $this->parseDetail($item['status'], $item['output_params'] ?? '');
+            $item['_duration_sec'] = $this->getCompletedDurationSec($item);
             $dataList[] = $item;
         }
 
@@ -44,7 +45,6 @@ class SuperSeed2LiteMonitor extends Admin {
             ->setExtraHtml($contentHtml, 'toolbar_top')
             ->setHeight('auto')
             ->addColumns([
-                ['id', 'ID'],
                 ['task_id', 'Task ID', 'callback', function($value){
                     $escaped = htmlspecialchars($value);
                     return "<span style='display:inline-flex;align-items:center;gap:4px;'><span class='ss2l-taskid' title='{$escaped}' style='max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;font-size:12px;font-family:monospace;'>{$escaped}</span><button type='button' class='ss2l-copy-btn' data-copy='{$escaped}' style='border:none;background:#ecf5ff;color:#409eff;cursor:pointer;border-radius:3px;padding:1px 6px;font-size:12px;line-height:1.5;' title='复制'>复制</button></span>";
@@ -67,6 +67,9 @@ class SuperSeed2LiteMonitor extends Admin {
                 }],
                 ['created_at', '创建时间'],
                 ['completed_at', '完成时间'],
+                ['_duration_sec', '完成耗时(秒)', 'callback', function($value){
+                    return $value === null || $value === '' ? '-' : "<span style='color:#67c23a;font-weight:bold'>{$value}秒</span>";
+                }],
             ])
             ->setRowList($dataList)
             ->setExtraJs($js)
@@ -180,6 +183,7 @@ class SuperSeed2LiteMonitor extends Admin {
                 'is_refund'    => $task['is_refund'],
                 'created_at'   => $task['created_at'],
                 'completed_at' => $task['completed_at'],
+                'duration_sec' => $this->getCompletedDurationSec($task),
                 'detail'       => $detail,
             ];
         }
@@ -237,6 +241,24 @@ class SuperSeed2LiteMonitor extends Admin {
             return "<span style='font-size:12px;color:#409eff;'>排队 {$idx}/{$len} | 预计生成 {$genCost} 排队 {$queueCost}</span>";
         }
         return '';
+    }
+
+    private function getCompletedDurationSec($task)
+    {
+        $status = $task['status'] ?? '';
+        $createdAt = $task['created_at'] ?? '';
+        $completedAt = $task['completed_at'] ?? '';
+        if ($status !== 'completed' || empty($createdAt) || empty($completedAt)) {
+            return null;
+        }
+
+        $start = strtotime($createdAt);
+        $end = strtotime($completedAt);
+        if (!$start || !$end || $end < $start) {
+            return null;
+        }
+
+        return $end - $start;
     }
 
     private function buildTimeRangeHtml($currentMinutes)
@@ -480,6 +502,7 @@ HTML;
             var refundHtml = t.is_refund == 1 ? '<span style="color:#f56c6c">已退款</span>' : '-';
             var checkboxTd = hasCheckbox ? '<td><div class="table-cell"><input type="checkbox" name="ids[]" value="' + t.id + '"></div></td>' : '';
             var detailHtml = renderDetail(t);
+            var durationHtml = (typeof t.duration_sec === 'undefined' || t.duration_sec === null || t.duration_sec === '') ? '-' : '<span style="color:#67c23a;font-weight:bold">' + t.duration_sec + '秒</span>';
 
             var taskIdEsc = $('<span>').text(t.task_id || '').html();
             var taskIdCell = '<span style="display:inline-flex;align-items:center;gap:4px;">'
@@ -489,7 +512,6 @@ HTML;
 
             var row = '<tr>'
                 + checkboxTd
-                + '<td><div class="table-cell">' + t.id + '</div></td>'
                 + '<td><div class="table-cell">' + taskIdCell + '</div></td>'
                 + '<td><div class="table-cell">' + (t.user_id || '') + '</div></td>'
                 + '<td><div class="table-cell"><span style="color:' + moneyColor + '">' + (t.money || 0) + '</span></div></td>'
@@ -498,6 +520,7 @@ HTML;
                 + '<td><div class="table-cell">' + refundHtml + '</div></td>'
                 + '<td><div class="table-cell">' + (t.created_at || '') + '</div></td>'
                 + '<td><div class="table-cell">' + (t.completed_at || '-') + '</div></td>'
+                + '<td><div class="table-cell">' + durationHtml + '</div></td>'
                 + '</tr>';
             tbody.append(row);
         }
