@@ -29,6 +29,9 @@ class SuperSeed2LiteMonitor extends Admin {
         $dataList = [];
         foreach ($rawList as $row) {
             $item = $row->toArray();
+            $meta = $this->parseTaskMeta($item['input_params'] ?? '');
+            $item['_model_tier'] = $meta['model_tier'];
+            $item['_resolution'] = $meta['resolution'];
             $item['_detail'] = $this->parseDetail($item['status'], $item['output_params'] ?? '');
             $item['_duration_sec'] = $this->getCompletedDurationSec($item);
             $dataList[] = $item;
@@ -51,6 +54,20 @@ class SuperSeed2LiteMonitor extends Admin {
                     return "<span style='display:inline-flex;align-items:center;gap:4px;'><span class='ss2l-taskid' title='{$escaped}' style='max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;font-size:12px;font-family:monospace;'>{$escaped}</span><button type='button' class='ss2l-copy-btn' data-copy='{$escaped}' style='border:none;background:#ecf5ff;color:#409eff;cursor:pointer;border-radius:3px;padding:1px 6px;font-size:12px;line-height:1.5;' title='复制'>复制</button></span>";
                 }],
                 ['user_id', '用户ID'],
+                ['_model_tier', 'Model档位', 'callback', function($value){
+                    if (empty($value) || $value === '-') {
+                        return '-';
+                    }
+                    $escaped = htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+                    return "<span style='color:#409eff;font-weight:bold'>{$escaped}</span>";
+                }],
+                ['_resolution', '分辨率', 'callback', function($value){
+                    if (empty($value) || $value === '-') {
+                        return '-';
+                    }
+                    $escaped = htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+                    return "<span style='color:#606266;font-weight:bold'>{$escaped}</span>";
+                }],
                 ['money', '金额(分)', 'callback', function($value){
                     $color = $value > 0 ? '#67c23a' : '#909399';
                     return "<span style='color:{$color}'>{$value}</span>";
@@ -161,13 +178,14 @@ class SuperSeed2LiteMonitor extends Admin {
 
         $recentTasks = FalTasksModel::where('app_name', $this->appName)
             ->where('created_at', '>=', $startTime)
-            ->field('task_id, user_id, money, status, created_at, completed_at, output_params')
+            ->field('task_id, user_id, money, status, created_at, completed_at, input_params, output_params')
             ->order('created_at desc')
             ->limit(200)
             ->select();
 
         $taskRows = [];
         foreach ($recentTasks as $task) {
+            $meta = $this->parseTaskMeta($task['input_params'] ?? '');
             $output = $task['output_params'] ? json_decode($task['output_params'], true) : null;
             $detail = '';
             if ($task['status'] === 'failed' && $output && isset($output['error'])) {
@@ -179,6 +197,8 @@ class SuperSeed2LiteMonitor extends Admin {
             $taskRows[] = [
                 'task_id'      => $task['task_id'] ?? '',
                 'user_id'      => $task['user_id'],
+                'model_tier'   => $meta['model_tier'],
+                'resolution'   => $meta['resolution'],
                 'money'        => $task['money'],
                 'status'       => $task['status'],
                 'created_at'   => $task['created_at'],
@@ -229,8 +249,7 @@ class SuperSeed2LiteMonitor extends Admin {
         if (!$json) return '';
 
         if ($status === 'failed' && isset($json['error'])) {
-            $err = htmlspecialchars($json['error']);
-            return "<span style='color:#f56c6c;font-size:12px;' title='{$err}'>{$err}</span>";
+            return $this->formatDetailCell($json['error'], '#f56c6c');
         }
         if (in_array($status, ['generating', 'submitting']) && isset($json['queue_info'])) {
             $q = $json['queue_info'];
@@ -238,9 +257,64 @@ class SuperSeed2LiteMonitor extends Admin {
             $len = $q['queue_length'] ?? '-';
             $genCost = isset($q['forecast_generate_cost']) ? round($q['forecast_generate_cost']) . 's' : '-';
             $queueCost = isset($q['forecast_queue_cost']) ? round($q['forecast_queue_cost']) . 's' : '-';
-            return "<span style='font-size:12px;color:#409eff;'>排队 {$idx}/{$len} | 预计生成 {$genCost} 排队 {$queueCost}</span>";
+            return $this->formatDetailCell("排队 {$idx}/{$len} | 预计生成 {$genCost} 排队 {$queueCost}", '#409eff');
         }
         return '';
+    }
+
+    private function parseTaskMeta($inputParams)
+    {
+        $json = is_array($inputParams) ? $inputParams : json_decode($inputParams, true);
+        if (!is_array($json)) {
+            return ['model_tier' => '-', 'resolution' => '-'];
+        }
+
+        $modelTier = $this->pickFirstMetaValue($json, ['model', 'model_tier', 'modelTier', 'tier']);
+        $resolution = $this->pickFirstMetaValue($json, ['resolution', 'video_resolution', 'size']);
+        if ($resolution === '' && isset($json['width'], $json['height'])) {
+            $resolution = $json['width'] . 'x' . $json['height'];
+        }
+
+        return [
+            'model_tier' => $modelTier !== '' ? $modelTier : '-',
+            'resolution' => $resolution !== '' ? $resolution : '-',
+        ];
+    }
+
+    private function pickFirstMetaValue($data, $keys)
+    {
+        foreach ($keys as $key) {
+            if (!isset($data[$key]) || $data[$key] === '') {
+                continue;
+            }
+            if (is_scalar($data[$key])) {
+                return trim((string) $data[$key]);
+            }
+            if (is_array($data[$key]) && isset($data[$key]['width'], $data[$key]['height'])) {
+                return $data[$key]['width'] . 'x' . $data[$key]['height'];
+            }
+        }
+        return '';
+    }
+
+    private function formatDetailCell($text, $color)
+    {
+        $text = trim((string) $text);
+        if ($text === '') {
+            return '-';
+        }
+
+        $title = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
+        $visible = htmlspecialchars($this->limitText($text, 120), ENT_QUOTES, 'UTF-8');
+        return "<span class='ss2l-detail-cell' style='color:{$color};' title='{$title}'>{$visible}</span>";
+    }
+
+    private function limitText($text, $limit)
+    {
+        if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+            return mb_strlen($text, 'UTF-8') > $limit ? mb_substr($text, 0, $limit, 'UTF-8') . '...' : $text;
+        }
+        return strlen($text) > $limit ? substr($text, 0, $limit) . '...' : $text;
     }
 
     private function getCompletedDurationSec($task)
@@ -327,6 +401,16 @@ class SuperSeed2LiteMonitor extends Admin {
 }
 .ss2l-btn:hover { border-color: #409eff; color: #409eff; }
 .ss2l-btn.active { background: #409eff; color: #fff; border-color: #409eff; }
+.ss2l-detail-cell {
+    display: block;
+    max-width: 280px;
+    max-height: 40px;
+    line-height: 18px;
+    overflow: hidden;
+    white-space: normal;
+    word-break: break-all;
+    font-size: 12px;
+}
 </style>
 
 <div class="ss2l-wrap">
@@ -461,11 +545,26 @@ HTML;
 
     var statusColors = { 'completed': '#67c23a', 'failed': '#f56c6c', 'pending': '#e6a23c', 'submitting': '#e6a23c', 'generating': '#409eff', 'collecting': '#9b59b6', 'transferring': '#3498db' };
 
+    function escapeHtml(value) {
+        return $('<span>').text(value == null ? '' : String(value)).html();
+    }
+
+    function truncateText(text, limit) {
+        text = text == null ? '' : String(text);
+        return text.length > limit ? text.substring(0, limit) + '...' : text;
+    }
+
+    function renderDetailCell(text, color) {
+        if (!text) return '-';
+        var full = escapeHtml(text);
+        var visible = escapeHtml(truncateText(text, 120));
+        return '<span class="ss2l-detail-cell" style="color:' + color + ';" title="' + full + '">' + visible + '</span>';
+    }
+
     function renderDetail(t) {
         if (!t.detail) return '-';
         if (t.status === 'failed') {
-            var err = $('<span>').text(t.detail).html();
-            return '<span style="color:#f56c6c;font-size:12px;" title="' + err + '">' + err + '</span>';
+            return renderDetailCell(t.detail, '#f56c6c');
         }
         if (t.status === 'generating' || t.status === 'submitting') {
             try {
@@ -474,9 +573,9 @@ HTML;
                 var len = q.queue_length || '-';
                 var genCost = q.forecast_generate_cost ? Math.round(q.forecast_generate_cost) + 's' : '-';
                 var qCost = q.forecast_queue_cost ? Math.round(q.forecast_queue_cost) + 's' : '-';
-                return '<span style="font-size:12px;color:#409eff;">排队 ' + idx + '/' + len + ' | 预计生成 ' + genCost + ' 排队 ' + qCost + '</span>';
+                return renderDetailCell('排队 ' + idx + '/' + len + ' | 预计生成 ' + genCost + ' 排队 ' + qCost, '#409eff');
             } catch(e) {
-                return '<span style="font-size:12px;color:#909399;">' + t.detail + '</span>';
+                return renderDetailCell(t.detail, '#909399');
             }
         }
         return '-';
@@ -487,7 +586,7 @@ HTML;
         if (!tbody.length) return;
         tbody.empty();
 
-        var colCount = 8;
+        var colCount = 10;
 
         if (!tasks || tasks.length === 0) {
             tbody.append('<tr><td colspan="' + colCount + '" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>');
@@ -505,7 +604,9 @@ HTML;
                 durationHtml = '<span style="color:' + durationColor + ';font-weight:bold">' + t.duration_sec + '秒</span>';
             }
 
-            var taskIdEsc = $('<span>').text(t.task_id || '').html();
+            var taskIdEsc = escapeHtml(t.task_id || '');
+            var modelTier = escapeHtml(t.model_tier || '-');
+            var resolution = escapeHtml(t.resolution || '-');
             var taskIdCell = '<span style="display:inline-flex;align-items:center;gap:4px;">'
                 + '<span style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;font-size:12px;font-family:monospace;" title="' + taskIdEsc + '">' + taskIdEsc + '</span>'
                 + '<button type="button" class="ss2l-copy-btn" data-copy="' + taskIdEsc + '" style="border:none;background:#ecf5ff;color:#409eff;cursor:pointer;border-radius:3px;padding:1px 6px;font-size:12px;line-height:1.5;" title="复制">复制</button>'
@@ -514,6 +615,8 @@ HTML;
             var row = '<tr>'
                 + '<td><div class="table-cell">' + taskIdCell + '</div></td>'
                 + '<td><div class="table-cell">' + (t.user_id || '') + '</div></td>'
+                + '<td><div class="table-cell"><span style="color:#409eff;font-weight:bold">' + modelTier + '</span></div></td>'
+                + '<td><div class="table-cell"><span style="color:#606266;font-weight:bold">' + resolution + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:' + moneyColor + '">' + (t.money || 0) + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:' + sColor + ';font-weight:bold">' + (t.status || '') + '</span></div></td>'
                 + '<td><div class="table-cell">' + (t.created_at || '') + '</div></td>'
