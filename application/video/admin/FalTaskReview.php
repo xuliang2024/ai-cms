@@ -170,10 +170,18 @@ class FalTaskReview extends Admin
 .fal-review-media-item img, .fal-review-media-item video { width:100%; max-height:220px; object-fit:contain; background:#111; border-radius:3px; }
 .fal-review-media-item audio { width:100%; }
 .fal-review-media-link { display:block; margin-top:6px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.fal-review-output-video { background:#f8fbff; border-color:#bfdbfe; }
+.fal-review-output-video h4 { font-size:15px; color:#111827; }
+.fal-review-output-video .fal-review-media-grid { grid-template-columns:repeat(auto-fit, minmax(640px, 1fr)); }
+.fal-review-output-video .fal-review-media-item { padding:10px; background:#0b1220; border-color:#1f2937; }
+.fal-review-output-video .fal-review-media-item video { min-height:360px; max-height:560px; background:#000; }
+.fal-review-output-video .fal-review-media-link { color:#93c5fd; }
 .fal-review-raw details { margin-top:8px; }
 .fal-review-raw summary { cursor:pointer; color:#409eff; font-weight:600; }
 @media (max-width: 1200px) {
     .fal-review-detail-body { grid-template-columns:1fr; }
+    .fal-review-output-video .fal-review-media-grid { grid-template-columns:1fr; }
+    .fal-review-output-video .fal-review-media-item video { min-height:260px; max-height:420px; }
 }
 </style>
 <form class="fal-review-filter" method="get" action="{$action}">
@@ -236,7 +244,7 @@ HTML;
         $imageHtml = $this->renderMediaSection('参考图', $inputMedia['image'], 'image');
         $videoHtml = $this->renderMediaSection('参考视频', $inputMedia['video'], 'video');
         $audioHtml = $this->renderMediaSection('参考音频', $inputMedia['audio'], 'audio');
-        $outputVideoHtml = $this->renderMediaSection('输出视频结果', $outputMedia['video'], 'video');
+        $outputVideoHtml = $this->renderMediaSection('输出视频结果', $outputMedia['video'], 'video', 'fal-review-section-full fal-review-output-video');
         $outputMediaHtml = '';
         if (!empty($outputMedia['image']) || !empty($outputMedia['audio'])) {
             $outputMediaHtml .= $this->renderMediaSection('输出图片', $outputMedia['image'], 'image');
@@ -269,12 +277,12 @@ HTML;
         <span><b>FAL任务ID</b> {$onlineTaskId}</span>
     </div>
     <div class="fal-review-detail-body">
+        {$outputVideoHtml}
         {$promptHtml}
         {$errorHtml}
         {$imageHtml}
         {$videoHtml}
         {$audioHtml}
-        {$outputVideoHtml}
         {$outputMediaHtml}
         {$rawJsonHtml}
     </div>
@@ -352,10 +360,11 @@ HTML;
         return $html . '</div>';
     }
 
-    private function renderMediaSection($title, $items, $type)
+    private function renderMediaSection($title, $items, $type, $extraClass = '')
     {
         $title = $this->safeText($title);
-        $html = '<div class="fal-review-section"><h4>' . $title . '</h4>';
+        $class = trim('fal-review-section ' . $extraClass);
+        $html = '<div class="' . $class . '"><h4>' . $title . '</h4>';
         if (empty($items)) {
             return $html . '<div class="fal-review-empty">未发现</div></div>';
         }
