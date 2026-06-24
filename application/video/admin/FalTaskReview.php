@@ -157,6 +157,8 @@ class FalTaskReview extends Admin
 .fal-review-meta { display:flex; flex-wrap:wrap; gap:8px; padding:10px 14px; background:#fff; border-top:1px solid #ebeef5; border-bottom:1px solid #ebeef5; color:#303133; }
 .fal-review-meta > span { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:4px 9px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:4px; }
 .fal-review-meta b { color:#6b7280; font-weight:600; }
+.fal-review-meta-sid { color:#7c2d12; background:#fff7ed !important; border-color:#fed7aa !important; font-weight:700; }
+.fal-review-meta-sid b { color:#c2410c; }
 .fal-review-status-badge { display:inline-flex; align-items:center; min-height:20px; padding:1px 8px; border-radius:999px; font-weight:700; line-height:18px; border:1px solid transparent; }
 .fal-review-status-completed { color:#15803d; background:#dcfce7; border-color:#bbf7d0; }
 .fal-review-status-failed { color:#b91c1c; background:#fee2e2; border-color:#fecaca; }
@@ -355,6 +357,7 @@ HTML;
         $completedAt = $this->safeText($task['completed_at'] ?: '-');
         $taskId = $this->safeText($task['task_id']);
         $onlineTaskId = $this->safeText($task['online_task_id'] ?: '-');
+        $sid = $this->safeText($this->extractOutputSid($output));
         $neighbors = $this->getNeighborTasks($task, $appName, $status);
         $previousButton = $this->renderNavButton($neighbors['previous'], '上一条', 'fa fa-chevron-left', $appName, $status);
         $nextButton = $this->renderNavButton($neighbors['next'], '下一条', 'fa fa-chevron-right', $appName, $status);
@@ -395,6 +398,7 @@ HTML;
         <span><b>完成</b> {$completedAt}</span>
         <span><b>系统任务ID</b> {$taskId}</span>
         <span><b>FAL任务ID</b> {$onlineTaskId}</span>
+        <span class="fal-review-meta-sid"><b>SID</b> {$sid}</span>
     </div>
     <div class="fal-review-detail-body">
         {$outputVideoHtml}
@@ -574,6 +578,44 @@ HTML;
     </details>
 </div>
 HTML;
+    }
+
+    private function extractOutputSid($output)
+    {
+        $sid = $this->findValueByKey($output, 'sid', 0);
+        if ($sid === null || $sid === '') {
+            return '-';
+        }
+
+        if (is_scalar($sid)) {
+            return (string) $sid;
+        }
+
+        return $this->prettyJson(json_encode($sid, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+
+    private function findValueByKey($value, $targetKey, $depth)
+    {
+        if ($depth > 8 || !is_array($value)) {
+            return null;
+        }
+
+        foreach ($value as $key => $item) {
+            if (strtolower((string) $key) === strtolower($targetKey)) {
+                return $item;
+            }
+        }
+
+        foreach ($value as $item) {
+            if (is_array($item)) {
+                $found = $this->findValueByKey($item, $targetKey, $depth + 1);
+                if ($found !== null && $found !== '') {
+                    return $found;
+                }
+            }
+        }
+
+        return null;
     }
 
     private function renderJsonPreview($value)
