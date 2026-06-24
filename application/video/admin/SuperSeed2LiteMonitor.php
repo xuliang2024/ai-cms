@@ -188,8 +188,8 @@ class SuperSeed2LiteMonitor extends Admin {
             $meta = $this->parseTaskMeta($task['input_params'] ?? '');
             $output = $task['output_params'] ? json_decode($task['output_params'], true) : null;
             $detail = '';
-            if ($task['status'] === 'failed' && $output && isset($output['error'])) {
-                $detail = $output['error'];
+            if ($task['status'] === 'failed' && $output) {
+                $detail = $this->extractFailureMessage($output);
             } elseif (in_array($task['status'], ['generating', 'submitting']) && $output && isset($output['queue_info'])) {
                 $q = $output['queue_info'];
                 $detail = json_encode($q, JSON_UNESCAPED_UNICODE);
@@ -248,8 +248,8 @@ class SuperSeed2LiteMonitor extends Admin {
         $json = json_decode($outputParams, true);
         if (!$json) return '';
 
-        if ($status === 'failed' && isset($json['error'])) {
-            return $this->formatDetailCell($json['error'], '#f56c6c');
+        if ($status === 'failed') {
+            return $this->formatDetailCell($this->extractFailureMessage($json), '#f56c6c');
         }
         if (in_array($status, ['generating', 'submitting']) && isset($json['queue_info'])) {
             $q = $json['queue_info'];
@@ -260,6 +260,225 @@ class SuperSeed2LiteMonitor extends Admin {
             return $this->formatDetailCell("排队 {$idx}/{$len} | 预计生成 {$genCost} 排队 {$queueCost}", '#409eff');
         }
         return '';
+    }
+
+    private function extractFailureMessage($output)
+    {
+        $output = $this->decodeJsonValue($output);
+        if (!is_array($output)) {
+            return '任务失败，请稍后重试';
+        }
+
+        $providerCode = $output['provider_code'] ?? '';
+        $code = $output['code'] ?? '';
+        $candidates = [];
+        $candidates[] = $output['provider_message'] ?? '';
+
+        $providerPayload = $this->decodeJsonValue($output['provider_payload'] ?? null);
+        if (is_array($providerPayload)) {
+            $candidates[] = $this->pickScalarValue($providerPayload, ['message', 'error_message', 'detail', 'msg']);
+            if (isset($providerPayload['error'])) {
+                $providerError = $this->decodeJsonValue($providerPayload['error']);
+                if (is_array($providerError)) {
+                    $candidates[] = $this->pickScalarValue($providerError, ['message', 'error_message', 'detail', 'msg']);
+                } elseif (is_string($providerError)) {
+                    $candidates[] = $providerError;
+                }
+            }
+        } elseif (is_string($providerPayload)) {
+            $candidates[] = $providerPayload;
+        }
+
+        if (!empty($output['raw_error'])) {
+            $rawPayload = $this->decodeJsonFromText($output['raw_error']);
+            if (is_array($rawPayload)) {
+                $candidates[] = $this->pickScalarValue($rawPayload, ['message', 'error_message', 'detail', 'msg']);
+            }
+            $candidates[] = $output['raw_error'];
+        }
+
+        $error = $this->decodeJsonValue($output['error'] ?? null);
+        if (is_array($error)) {
+            $providerCode = $providerCode ?: ($error['provider_code'] ?? '');
+            $code = $code ?: ($error['code'] ?? '');
+            $candidates[] = $this->pickScalarValue($error, ['message', 'error_message', 'detail', 'msg']);
+            $candidates[] = $error['error_code'] ?? '';
+        } elseif (is_string($error)) {
+            $candidates[] = $error;
+        }
+
+        $candidates[] = $output['message'] ?? '';
+        $candidates[] = $output['error_code'] ?? '';
+
+        foreach ($candidates as $candidate) {
+            $message = $this->normalizeFailureMessage($candidate, $code, $providerCode);
+            if ($message !== '') {
+                return $message;
+            }
+        }
+
+        return $this->failureMessageByCode($code, $providerCode);
+    }
+
+    private function decodeJsonValue($value)
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return '';
+        }
+
+        $decoded = json_decode($trimmed, true);
+        return json_last_error() === JSON_ERROR_NONE ? $decoded : $value;
+    }
+
+    private function decodeJsonFromText($text)
+    {
+        if (!is_string($text)) {
+            return null;
+        }
+        $start = strpos($text, '{');
+        $end = strrpos($text, '}');
+        if ($start === false || $end === false || $end <= $start) {
+            return null;
+        }
+
+        $decoded = json_decode(substr($text, $start, $end - $start + 1), true);
+        return json_last_error() === JSON_ERROR_NONE ? $decoded : null;
+    }
+
+    private function pickScalarValue($data, $keys)
+    {
+        if (!is_array($data)) {
+            return '';
+        }
+        foreach ($keys as $key) {
+            if (!isset($data[$key]) || $data[$key] === '') {
+                continue;
+            }
+            if (is_scalar($data[$key])) {
+                return trim((string) $data[$key]);
+            }
+        }
+        return '';
+    }
+
+    private function normalizeFailureMessage($message, $code = '', $providerCode = '')
+    {
+        if (!is_scalar($message)) {
+            return '';
+        }
+
+        $message = trim((string) $message);
+        if ($message === '' || strtolower($message) === 'null') {
+            return '';
+        }
+
+        $message = preg_replace('/Request ID:\s*[a-z0-9-]+/i', '', $message);
+        $message = preg_replace('/\s+/u', ' ', $message);
+        $message = trim($message, " \t\n\r\0\x0B,.;，。");
+
+        if ($message === '') {
+            return '';
+        }
+
+        if (strpos($message, '{') !== false && preg_match('/"message"\s*:\s*"([^"]+)"/u', $message, $matches)) {
+            $extracted = stripcslashes($matches[1]);
+            if ($extracted !== '' && $extracted !== $message) {
+                return $this->normalizeFailureMessage($extracted, $code, $providerCode);
+            }
+        }
+
+        if (preg_match('/图片宽高至少\s*([0-9]+)px.*当前\s*([0-9]+x[0-9]+)/u', $message, $matches)) {
+            return "参考图片尺寸过小，至少 {$matches[1]}px，当前 {$matches[2]}";
+        }
+        if (stripos($message, 'Request failed with status code 404') !== false) {
+            return '参考图片上传失败，资源不存在(404)';
+        }
+        if (stripos($message, 'Invalid base64 image url') !== false) {
+            return '图片链接无效或图片格式不正确';
+        }
+        if (stripos($message, 'getaddrinfo ENOTFOUND') !== false) {
+            return '网络连接失败，域名解析失败';
+        }
+        if (stripos($message, 'HTTP 502') !== false || stripos($message, '502 Bad Gateway') !== false || stripos($message, 'upstream failed') !== false) {
+            return '服务网关异常，请稍后重试';
+        }
+        if (stripos($message, 'chrome_submit_timeout') !== false || stripos($message, 'CDP timeout') !== false) {
+            return '提交超时，请稍后重试';
+        }
+        if (stripos($message, 'Inspected target navigated or closed') !== false) {
+            return '页面已跳转或关闭，请重试';
+        }
+        if (stripos($message, 'input text may contain severe violation') !== false) {
+            return '输入文本可能包含严重违规信息';
+        }
+        if (stripos($message, 'input text may contain sensitive information') !== false) {
+            return '输入文本可能包含敏感信息';
+        }
+        if (stripos($message, 'input text may be related to copyright restrictions') !== false) {
+            return '输入文本可能涉及版权限制';
+        }
+        if (stripos($message, 'output video may be related to copyright restrictions') !== false) {
+            return '输出视频可能涉及版权限制';
+        }
+        if (stripos($message, 'InputTextSensitiveContentDetected.PolicyViolation') !== false) {
+            return '输入文本可能涉及版权限制';
+        }
+        if (stripos($message, 'OutputVideoSensitiveContentDetected.PolicyViolation') !== false) {
+            return '输出视频可能涉及版权限制';
+        }
+        if (stripos($message, 'SensitiveContentDetected.SevereViolation') !== false) {
+            return '输入文本可能包含严重违规信息';
+        }
+        if (stripos($message, 'SensitiveContentDetected') !== false) {
+            return '输入文本可能包含敏感信息';
+        }
+        if (stripos($message, 'InvalidParameter.InvalidImageURL') !== false) {
+            return '图片链接无效或图片格式不正确';
+        }
+        if (stripos($message, 'server is currently unable') !== false || stripos($message, 'server overload') !== false || stripos($message, 'TooManyRequests') !== false) {
+            return '服务过载，请稍后重试';
+        }
+        if (stripos($message, 'unexpected internal error') !== false || stripos($message, 'InternalServiceError') !== false) {
+            return $this->failureMessageByCode($code, $providerCode);
+        }
+
+        if (preg_match('/[\x{4e00}-\x{9fff}]/u', $message)) {
+            return $message;
+        }
+
+        return '';
+    }
+
+    private function failureMessageByCode($code, $providerCode)
+    {
+        $providerCode = (string) $providerCode;
+        if ($providerCode === '12004') {
+            return '内容不符合平台规则';
+        }
+        if ($providerCode === '12005') {
+            return '参考图可能涉及版权限制';
+        }
+        if ($providerCode === '12006') {
+            return '参考视频可能涉及版权限制';
+        }
+        if ($providerCode === '10009' || (string) $code === '429') {
+            return '服务过载，请稍后重试';
+        }
+        if ((string) $code === '500') {
+            return '服务内部错误，请稍后重试';
+        }
+        if ((string) $code === '400') {
+            return '请求参数或内容审核未通过';
+        }
+        return '任务失败，请稍后重试';
     }
 
     private function parseTaskMeta($inputParams)
