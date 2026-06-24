@@ -14,13 +14,7 @@ class FalTaskReview extends Admin
         $status = input('param.status', '', 'trim');
         $reviewId = input('param.review_id', 0, 'intval');
 
-        $query = FalTasksModel::where([]);
-        if ($appName !== '') {
-            $query = $query->where('app_name', $appName);
-        }
-        if ($status !== '') {
-            $query = $query->where('status', $status);
-        }
+        $query = $this->applyTaskFilters(FalTasksModel::where([]), $appName, $status);
 
         $queryParams = [
             'app_name' => $appName,
@@ -31,7 +25,7 @@ class FalTaskReview extends Admin
         }
 
         $dataList = $query
-            ->order('created_at desc')
+            ->order('created_at desc, id desc')
             ->paginate(100, false, [
                 'query' => $queryParams,
             ]);
@@ -107,6 +101,18 @@ class FalTaskReview extends Admin
             ->fetch();
     }
 
+    private function applyTaskFilters($query, $appName, $status)
+    {
+        if ($appName !== '') {
+            $query = $query->where('app_name', $appName);
+        }
+        if ($status !== '') {
+            $query = $query->where('status', $status);
+        }
+
+        return $query;
+    }
+
     private function buildFilterHtml($appName, $status)
     {
         $appNameEsc = htmlspecialchars($appName, ENT_QUOTES, 'UTF-8');
@@ -139,12 +145,18 @@ class FalTaskReview extends Admin
 .fal-review-filter select.form-control { width:150px; }
 .fal-review-json { display:block; max-width:360px; max-height:56px; overflow:hidden; white-space:pre-wrap; word-break:break-all; color:#606266; line-height:18px; }
 .fal-review-copy { display:inline-block; max-width:220px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; vertical-align:middle; }
-.fal-review-detail { margin:0 0 14px; border:1px solid #d9ecff; background:#f8fbff; border-radius:4px; }
-.fal-review-detail-head { display:flex; justify-content:space-between; gap:12px; padding:12px 14px; border-bottom:1px solid #e4eefb; }
-.fal-review-detail-title { font-size:15px; font-weight:700; color:#303133; }
-.fal-review-detail-close { color:#909399; }
-.fal-review-meta { display:flex; flex-wrap:wrap; gap:8px 14px; margin-top:8px; color:#606266; }
-.fal-review-meta b { color:#303133; }
+.fal-review-detail { margin:0 0 14px; border:1px solid #233146; background:#f6f8fb; border-radius:4px; overflow:hidden; box-shadow:0 1px 2px rgba(15, 23, 42, .08); }
+.fal-review-detail-head { display:flex; justify-content:space-between; gap:16px; padding:12px 14px; background:#111827; color:#dbeafe; border-bottom:1px solid #233146; }
+.fal-review-detail-title { display:flex; align-items:center; gap:8px; font-size:15px; font-weight:700; color:#fff; }
+.fal-review-status-dot { width:8px; height:8px; border-radius:50%; background:#60a5fa; box-shadow:0 0 0 4px rgba(96, 165, 250, .16); }
+.fal-review-detail-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:6px; }
+.fal-review-console-btn { display:inline-flex; align-items:center; gap:5px; min-height:30px; padding:5px 10px; border-radius:4px; background:#1f2937; border:1px solid #374151; color:#e5e7eb; line-height:18px; }
+.fal-review-console-btn:hover { color:#fff; background:#2563eb; border-color:#2563eb; }
+.fal-review-console-btn.is-disabled, .fal-review-console-btn.is-disabled:hover { color:#6b7280; background:#172033; border-color:#243044; cursor:not-allowed; pointer-events:none; }
+.fal-review-detail-close { color:#e5e7eb; }
+.fal-review-meta { display:flex; flex-wrap:wrap; gap:8px; padding:10px 14px; background:#172033; border-top:1px solid rgba(255,255,255,.05); color:#cbd5e1; }
+.fal-review-meta span { display:inline-flex; align-items:center; gap:5px; padding:4px 8px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); border-radius:4px; }
+.fal-review-meta b { color:#93c5fd; }
 .fal-review-detail-body { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; padding:12px; }
 .fal-review-section { min-width:0; padding:12px; background:#fff; border:1px solid #ebeef5; border-radius:4px; }
 .fal-review-section-full { grid-column:1 / -1; }
@@ -183,11 +195,13 @@ HTML;
 <div class="fal-review-detail">
     <div class="fal-review-detail-head">
         <div>
-            <div class="fal-review-detail-title">单条任务查看</div>
-            <div class="fal-review-meta"><span>未找到这条任务记录</span></div>
+            <div class="fal-review-detail-title"><span class="fal-review-status-dot"></span>任务审查控制台</div>
         </div>
-        <a class="fal-review-detail-close" href="{$closeUrl}">关闭</a>
+        <div class="fal-review-detail-actions">
+            <a class="fal-review-console-btn" href="{$closeUrl}"><i class="fa fa-times"></i> 关闭</a>
+        </div>
     </div>
+    <div class="fal-review-meta"><span>未找到这条任务记录</span></div>
 </div>
 HTML;
         }
@@ -214,6 +228,9 @@ HTML;
         $completedAt = $this->safeText($task['completed_at'] ?: '-');
         $taskId = $this->safeText($task['task_id']);
         $onlineTaskId = $this->safeText($task['online_task_id'] ?: '-');
+        $neighbors = $this->getNeighborTasks($task, $appName, $status);
+        $previousButton = $this->renderNavButton($neighbors['previous'], '上一条', 'fa fa-chevron-left', $appName, $status);
+        $nextButton = $this->renderNavButton($neighbors['next'], '下一条', 'fa fa-chevron-right', $appName, $status);
 
         $promptHtml = $this->renderPromptSection($prompts);
         $imageHtml = $this->renderMediaSection('参考图', $inputMedia['image'], 'image');
@@ -232,20 +249,24 @@ HTML;
 <div class="fal-review-detail" id="fal-review-detail">
     <div class="fal-review-detail-head">
         <div>
-            <div class="fal-review-detail-title">单条任务查看</div>
-            <div class="fal-review-meta">
-                <span><b>ID</b> {$id}</span>
-                <span><b>用户ID</b> {$userId}</span>
-                <span><b>模型</b> {$appNameText}</span>
-                <span><b>状态</b> {$statusText}</span>
-                <span><b>金额(分)</b> {$money}</span>
-                <span><b>创建</b> {$createdAt}</span>
-                <span><b>完成</b> {$completedAt}</span>
-                <span><b>系统任务ID</b> {$taskId}</span>
-                <span><b>FAL任务ID</b> {$onlineTaskId}</span>
-            </div>
+            <div class="fal-review-detail-title"><span class="fal-review-status-dot"></span>任务审查控制台</div>
         </div>
-        <a class="fal-review-detail-close" href="{$closeUrl}">关闭</a>
+        <div class="fal-review-detail-actions">
+            {$previousButton}
+            {$nextButton}
+            <a class="fal-review-console-btn" href="{$closeUrl}"><i class="fa fa-times"></i> 关闭</a>
+        </div>
+    </div>
+    <div class="fal-review-meta">
+        <span><b>ID</b> {$id}</span>
+        <span><b>用户ID</b> {$userId}</span>
+        <span><b>模型</b> {$appNameText}</span>
+        <span><b>状态</b> {$statusText}</span>
+        <span><b>金额(分)</b> {$money}</span>
+        <span><b>创建</b> {$createdAt}</span>
+        <span><b>完成</b> {$completedAt}</span>
+        <span><b>系统任务ID</b> {$taskId}</span>
+        <span><b>FAL任务ID</b> {$onlineTaskId}</span>
     </div>
     <div class="fal-review-detail-body">
         {$promptHtml}
@@ -259,6 +280,59 @@ HTML;
     </div>
 </div>
 HTML;
+    }
+
+    private function renderNavButton($task, $title, $icon, $appName, $status)
+    {
+        $title = $this->safeText($title);
+        $icon = $this->safeText($icon);
+        if (empty($task)) {
+            return '<span class="fal-review-console-btn is-disabled"><i class="' . $icon . '"></i> ' . $title . '</span>';
+        }
+
+        $href = $this->buildUrl([
+            'app_name' => $appName,
+            'status' => $status,
+            'review_id' => $task['id'],
+        ]);
+
+        return '<a class="fal-review-console-btn" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') .
+            '"><i class="' . $icon . '"></i> ' . $title . '</a>';
+    }
+
+    private function getNeighborTasks($task, $appName, $status)
+    {
+        $createdAt = $task['created_at'];
+        $id = intval($task['id']);
+
+        $previousQuery = $this->applyTaskFilters(FalTasksModel::where([]), $appName, $status);
+        $previous = $previousQuery
+            ->where(function ($query) use ($createdAt, $id) {
+                $query->where('created_at', '>', $createdAt)
+                    ->whereOr(function ($query) use ($createdAt, $id) {
+                        $query->where('created_at', '=', $createdAt)->where('id', '>', $id);
+                    });
+            })
+            ->field('id')
+            ->order('created_at asc, id asc')
+            ->find();
+
+        $nextQuery = $this->applyTaskFilters(FalTasksModel::where([]), $appName, $status);
+        $next = $nextQuery
+            ->where(function ($query) use ($createdAt, $id) {
+                $query->where('created_at', '<', $createdAt)
+                    ->whereOr(function ($query) use ($createdAt, $id) {
+                        $query->where('created_at', '=', $createdAt)->where('id', '<', $id);
+                    });
+            })
+            ->field('id')
+            ->order('created_at desc, id desc')
+            ->find();
+
+        return [
+            'previous' => $previous,
+            'next' => $next,
+        ];
     }
 
     private function renderPromptSection($prompts)
