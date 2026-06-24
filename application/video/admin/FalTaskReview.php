@@ -163,13 +163,23 @@ class FalTaskReview extends Admin
 .fal-review-section h4 { margin:0 0 10px; font-size:14px; font-weight:700; color:#303133; }
 .fal-review-empty { color:#909399; }
 .fal-review-pre { max-height:360px; overflow:auto; margin:0; padding:10px; background:#f5f7fa; border:1px solid #ebeef5; border-radius:4px; white-space:pre-wrap; word-break:break-word; color:#303133; line-height:1.55; }
+.fal-review-error h4 { color:#f56c6c; }
+.fal-review-error .fal-review-pre { color:#b91c1c; background:#fef2f2; border-color:#fecaca; }
 .fal-review-prompt-label { margin:8px 0 6px; color:#409eff; font-weight:600; }
 .fal-review-prompt-label:first-of-type { margin-top:0; }
 .fal-review-media-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px; }
 .fal-review-media-item { min-width:0; padding:8px; border:1px solid #ebeef5; border-radius:4px; background:#fafafa; }
 .fal-review-media-item img, .fal-review-media-item video { width:100%; max-height:220px; object-fit:contain; background:#111; border-radius:3px; }
+.fal-review-image-preview { display:block; cursor:zoom-in; }
+.fal-review-image-preview:focus { outline:2px solid #409eff; outline-offset:2px; }
 .fal-review-media-item audio { width:100%; }
 .fal-review-media-link { display:block; margin-top:6px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.fal-review-lightbox { display:none; position:fixed; z-index:99999; inset:0; padding:36px; background:rgba(15, 23, 42, .86); align-items:center; justify-content:center; }
+.fal-review-lightbox.is-open { display:flex; }
+.fal-review-lightbox-inner { position:relative; max-width:96vw; max-height:92vh; }
+.fal-review-lightbox img { display:block; max-width:96vw; max-height:92vh; object-fit:contain; background:#111; border-radius:4px; box-shadow:0 20px 60px rgba(0,0,0,.45); }
+.fal-review-lightbox-close { position:absolute; top:-34px; right:0; width:30px; height:30px; border:0; border-radius:4px; color:#fff; background:rgba(255,255,255,.18); font-size:22px; line-height:30px; text-align:center; cursor:pointer; }
+.fal-review-lightbox-close:hover { background:rgba(255,255,255,.28); }
 .fal-review-output-video { background:#f8fbff; border-color:#bfdbfe; }
 .fal-review-output-video h4 { font-size:15px; color:#111827; }
 .fal-review-output-video .fal-review-media-grid { grid-template-columns:repeat(auto-fit, minmax(640px, 1fr)); }
@@ -184,6 +194,60 @@ class FalTaskReview extends Admin
     .fal-review-output-video .fal-review-media-item video { min-height:260px; max-height:420px; }
 }
 </style>
+<script>
+(function () {
+    if (window.__falReviewLightboxReady) {
+        return;
+    }
+    window.__falReviewLightboxReady = true;
+
+    function ensureLightbox() {
+        var lightbox = document.getElementById('fal-review-lightbox');
+        if (lightbox) {
+            return lightbox;
+        }
+
+        lightbox = document.createElement('div');
+        lightbox.id = 'fal-review-lightbox';
+        lightbox.className = 'fal-review-lightbox';
+        lightbox.innerHTML = '<div class="fal-review-lightbox-inner"><button type="button" class="fal-review-lightbox-close" aria-label="关闭">&times;</button><img alt=""></div>';
+        document.body.appendChild(lightbox);
+        return lightbox;
+    }
+
+    function closeLightbox() {
+        var lightbox = document.getElementById('fal-review-lightbox');
+        if (lightbox) {
+            lightbox.className = 'fal-review-lightbox';
+            lightbox.querySelector('img').removeAttribute('src');
+        }
+    }
+
+    document.addEventListener('click', function (event) {
+        var trigger = event.target.closest && event.target.closest('.fal-review-image-preview');
+        if (trigger) {
+            event.preventDefault();
+            var lightbox = ensureLightbox();
+            var image = lightbox.querySelector('img');
+            image.src = trigger.getAttribute('data-image-url') || trigger.getAttribute('href');
+            image.alt = trigger.getAttribute('data-image-title') || '';
+            lightbox.className = 'fal-review-lightbox is-open';
+            return;
+        }
+
+        if (event.target.id === 'fal-review-lightbox' ||
+            (event.target.classList && event.target.classList.contains('fal-review-lightbox-close'))) {
+            closeLightbox();
+        }
+    });
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            closeLightbox();
+        }
+    });
+})();
+</script>
 <form class="fal-review-filter" method="get" action="{$action}">
     <label>模型名称</label>
     <input class="form-control" type="text" name="app_name" value="{$appNameEsc}" placeholder="例如 st-ai/super-seed2-lite">
@@ -374,7 +438,7 @@ HTML;
             $safeUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
             $html .= '<div class="fal-review-media-item">';
             if ($type === 'image') {
-                $html .= '<a href="' . $safeUrl . '" target="_blank"><img src="' . $safeUrl . '" loading="lazy"></a>';
+                $html .= '<a class="fal-review-image-preview" href="' . $safeUrl . '" data-image-url="' . $safeUrl . '" data-image-title="' . $title . '"><img src="' . $safeUrl . '" loading="lazy"></a>';
             } elseif ($type === 'video') {
                 $html .= '<video controls preload="metadata" src="' . $safeUrl . '"></video>';
             } elseif ($type === 'audio') {
@@ -390,7 +454,7 @@ HTML;
 
     private function renderErrorSection($errorText)
     {
-        $html = '<div class="fal-review-section fal-review-section-full"><h4>失败信息</h4>';
+        $html = '<div class="fal-review-section fal-review-section-full fal-review-error"><h4>失败信息</h4>';
         if ($errorText === '') {
             return $html . '<div class="fal-review-empty">当前没有失败信息</div></div>';
         }
