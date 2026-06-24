@@ -174,17 +174,26 @@ class FalTaskReview extends Admin
 .fal-review-error .fal-review-pre { color:#b91c1c; background:#fef2f2; border-color:#fecaca; }
 .fal-review-prompt-label { margin:8px 0 6px; color:#409eff; font-weight:600; }
 .fal-review-prompt-label:first-of-type { margin-top:0; }
+.fal-review-reference-media { grid-column:1 / -1; display:grid; grid-template-columns:2fr 1fr 1fr; gap:12px; }
+.fal-review-reference-media .fal-review-section { min-height:100%; }
+.fal-review-reference-media .fal-review-media-grid { grid-template-columns:repeat(auto-fill, minmax(92px, 1fr)); }
+.fal-review-reference-media .fal-review-media-item { padding:6px; }
+.fal-review-reference-media .fal-review-media-item img { height:86px; max-height:86px; object-fit:cover; background:#f3f4f6; }
 .fal-review-media-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px; }
 .fal-review-media-item { min-width:0; padding:8px; border:1px solid #ebeef5; border-radius:4px; background:#fafafa; }
 .fal-review-media-item img, .fal-review-media-item video { width:100%; max-height:220px; object-fit:contain; background:#111; border-radius:3px; }
 .fal-review-image-preview { display:block; cursor:zoom-in; }
 .fal-review-image-preview:focus { outline:2px solid #409eff; outline-offset:2px; }
 .fal-review-media-item audio { width:100%; }
+.fal-review-media-play { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; min-height:44px; padding:8px 10px; border:1px solid #bfdbfe; border-radius:4px; color:#1d4ed8; background:#eff6ff; font-weight:600; cursor:pointer; }
+.fal-review-media-play:hover { color:#fff; background:#2563eb; border-color:#2563eb; }
 .fal-review-media-link { display:block; margin-top:6px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
 .fal-review-lightbox { display:none; position:fixed; z-index:99999; inset:0; padding:36px; background:rgba(15, 23, 42, .86); align-items:center; justify-content:center; }
 .fal-review-lightbox.is-open { display:flex; }
 .fal-review-lightbox-inner { position:relative; max-width:96vw; max-height:92vh; }
 .fal-review-lightbox img { display:block; max-width:96vw; max-height:92vh; object-fit:contain; background:#111; border-radius:4px; box-shadow:0 20px 60px rgba(0,0,0,.45); }
+.fal-review-lightbox video { display:block; width:min(96vw, 1100px); max-height:86vh; background:#000; border-radius:4px; box-shadow:0 20px 60px rgba(0,0,0,.45); }
+.fal-review-lightbox audio { display:block; width:min(86vw, 640px); padding:18px; background:#fff; border-radius:4px; box-shadow:0 20px 60px rgba(0,0,0,.45); }
 .fal-review-lightbox-close { position:absolute; top:-34px; right:0; width:30px; height:30px; border:0; border-radius:4px; color:#fff; background:rgba(255,255,255,.18); font-size:22px; line-height:30px; text-align:center; cursor:pointer; }
 .fal-review-lightbox-close:hover { background:rgba(255,255,255,.28); }
 .fal-review-output-video { background:#f8fbff; border-color:#bfdbfe; }
@@ -197,6 +206,7 @@ class FalTaskReview extends Admin
 .fal-review-raw summary { cursor:pointer; color:#409eff; font-weight:600; }
 @media (max-width: 1200px) {
     .fal-review-detail-body { grid-template-columns:1fr; }
+    .fal-review-reference-media { grid-template-columns:1fr; }
     .fal-review-output-video .fal-review-media-grid { grid-template-columns:1fr; }
     .fal-review-output-video .fal-review-media-item video { min-height:260px; max-height:420px; }
 }
@@ -217,7 +227,7 @@ class FalTaskReview extends Admin
         lightbox = document.createElement('div');
         lightbox.id = 'fal-review-lightbox';
         lightbox.className = 'fal-review-lightbox';
-        lightbox.innerHTML = '<div class="fal-review-lightbox-inner"><button type="button" class="fal-review-lightbox-close" aria-label="关闭">&times;</button><img alt=""></div>';
+        lightbox.innerHTML = '<div class="fal-review-lightbox-inner"><button type="button" class="fal-review-lightbox-close" aria-label="关闭">&times;</button><div class="fal-review-lightbox-content"></div></div>';
         document.body.appendChild(lightbox);
         return lightbox;
     }
@@ -226,19 +236,57 @@ class FalTaskReview extends Admin
         var lightbox = document.getElementById('fal-review-lightbox');
         if (lightbox) {
             lightbox.className = 'fal-review-lightbox';
-            lightbox.querySelector('img').removeAttribute('src');
+            var content = lightbox.querySelector('.fal-review-lightbox-content');
+            if (content) {
+                content.innerHTML = '';
+            }
         }
+    }
+
+    function openLightbox(contentHtml) {
+        var lightbox = ensureLightbox();
+        var content = lightbox.querySelector('.fal-review-lightbox-content');
+        content.innerHTML = contentHtml;
+        lightbox.className = 'fal-review-lightbox is-open';
+        return content;
     }
 
     document.addEventListener('click', function (event) {
         var trigger = event.target.closest && event.target.closest('.fal-review-image-preview');
         if (trigger) {
             event.preventDefault();
-            var lightbox = ensureLightbox();
-            var image = lightbox.querySelector('img');
+            openLightbox('<img alt="">');
+            var image = document.querySelector('#fal-review-lightbox img');
             image.src = trigger.getAttribute('data-image-url') || trigger.getAttribute('href');
             image.alt = trigger.getAttribute('data-image-title') || '';
-            lightbox.className = 'fal-review-lightbox is-open';
+            return;
+        }
+
+        trigger = event.target.closest && event.target.closest('.fal-review-media-preview');
+        if (trigger) {
+            event.preventDefault();
+            var src = trigger.getAttribute('data-media-src');
+            var type = trigger.getAttribute('data-media-type');
+            if (!src) {
+                return;
+            }
+            if (type === 'video') {
+                var videoContent = openLightbox('');
+                var video = document.createElement('video');
+                video.controls = true;
+                video.autoplay = true;
+                video.preload = 'metadata';
+                video.src = src;
+                videoContent.appendChild(video);
+            } else if (type === 'audio') {
+                var audioContent = openLightbox('');
+                var audio = document.createElement('audio');
+                audio.controls = true;
+                audio.autoplay = true;
+                audio.preload = 'metadata';
+                audio.src = src;
+                audioContent.appendChild(audio);
+            }
             return;
         }
 
@@ -312,9 +360,10 @@ HTML;
         $nextButton = $this->renderNavButton($neighbors['next'], '下一条', 'fa fa-chevron-right', $appName, $status);
 
         $promptHtml = $this->renderPromptSection($prompts);
-        $imageHtml = $this->renderMediaSection('参考图', $inputMedia['image'], 'image');
-        $videoHtml = $this->renderMediaSection('参考视频', $inputMedia['video'], 'video');
-        $audioHtml = $this->renderMediaSection('参考音频', $inputMedia['audio'], 'audio');
+        $imageHtml = $this->renderMediaSection('参考图', $inputMedia['image'], 'image', 'fal-review-reference-item');
+        $videoHtml = $this->renderMediaSection('参考视频', $inputMedia['video'], 'video', 'fal-review-reference-item', false);
+        $audioHtml = $this->renderMediaSection('参考音频', $inputMedia['audio'], 'audio', 'fal-review-reference-item', false);
+        $referenceMediaHtml = $this->renderReferenceMediaGroup($imageHtml, $videoHtml, $audioHtml);
         $outputVideoHtml = $this->renderMediaSection('输出视频结果', $outputMedia['video'], 'video', 'fal-review-section-full fal-review-output-video');
         $outputMediaHtml = '';
         if (!empty($outputMedia['image']) || !empty($outputMedia['audio'])) {
@@ -349,11 +398,9 @@ HTML;
     </div>
     <div class="fal-review-detail-body">
         {$outputVideoHtml}
+        {$referenceMediaHtml}
         {$promptHtml}
         {$errorHtml}
-        {$imageHtml}
-        {$videoHtml}
-        {$audioHtml}
         {$outputMediaHtml}
         {$rawJsonHtml}
     </div>
@@ -450,7 +497,12 @@ HTML;
         return $html . '</div>';
     }
 
-    private function renderMediaSection($title, $items, $type, $extraClass = '')
+    private function renderReferenceMediaGroup($imageHtml, $videoHtml, $audioHtml)
+    {
+        return '<div class="fal-review-reference-media">' . $imageHtml . $videoHtml . $audioHtml . '</div>';
+    }
+
+    private function renderMediaSection($title, $items, $type, $extraClass = '', $inlinePlayback = true)
     {
         $title = $this->safeText($title);
         $class = trim('fal-review-section ' . $extraClass);
@@ -460,17 +512,33 @@ HTML;
         }
 
         $html .= '<div class="fal-review-media-grid">';
-        foreach (array_slice($items, 0, 12) as $url) {
+        $items = array_slice($items, 0, 12);
+        $count = count($items);
+        $index = 0;
+        foreach ($items as $url) {
+            $index++;
             $safeUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
             $html .= '<div class="fal-review-media-item">';
             if ($type === 'image') {
                 $html .= '<a class="fal-review-image-preview" href="' . $safeUrl . '" data-image-url="' . $safeUrl . '" data-image-title="' . $title . '"><img src="' . $safeUrl . '" loading="lazy"></a>';
             } elseif ($type === 'video') {
-                $html .= '<video controls preload="metadata" src="' . $safeUrl . '"></video>';
+                if ($inlinePlayback) {
+                    $html .= '<video controls preload="metadata" src="' . $safeUrl . '"></video>';
+                } else {
+                    $label = $count > 1 ? '播放视频 ' . $index : '播放视频';
+                    $html .= '<button type="button" class="fal-review-media-play fal-review-media-preview" data-media-type="video" data-media-src="' . $safeUrl . '"><i class="fa fa-play-circle"></i> ' . $label . '</button>';
+                }
             } elseif ($type === 'audio') {
-                $html .= '<audio controls preload="metadata" src="' . $safeUrl . '"></audio>';
+                if ($inlinePlayback) {
+                    $html .= '<audio controls preload="metadata" src="' . $safeUrl . '"></audio>';
+                } else {
+                    $label = $count > 1 ? '播放音频 ' . $index : '播放音频';
+                    $html .= '<button type="button" class="fal-review-media-play fal-review-media-preview" data-media-type="audio" data-media-src="' . $safeUrl . '"><i class="fa fa-play-circle"></i> ' . $label . '</button>';
+                }
             }
-            $html .= '<a class="fal-review-media-link" href="' . $safeUrl . '" target="_blank" title="' . $safeUrl . '">打开链接</a>';
+            if ($inlinePlayback || $type === 'image') {
+                $html .= '<a class="fal-review-media-link" href="' . $safeUrl . '" target="_blank" title="' . $safeUrl . '">打开链接</a>';
+            }
             $html .= '</div>';
         }
         $html .= '</div>';
