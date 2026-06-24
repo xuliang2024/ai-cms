@@ -145,15 +145,15 @@ class FalTaskReview extends Admin
 .fal-review-filter select.form-control { width:150px; }
 .fal-review-json { display:block; max-width:360px; max-height:56px; overflow:hidden; white-space:pre-wrap; word-break:break-all; color:#606266; line-height:18px; }
 .fal-review-copy { display:inline-block; max-width:220px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; vertical-align:middle; }
-.fal-review-detail { margin:0 0 14px; border:1px solid #233146; background:#f6f8fb; border-radius:4px; overflow:hidden; box-shadow:0 1px 2px rgba(15, 23, 42, .08); }
-.fal-review-detail-head { display:flex; justify-content:space-between; gap:16px; padding:12px 14px; background:#111827; color:#dbeafe; border-bottom:1px solid #233146; }
-.fal-review-detail-title { display:flex; align-items:center; gap:8px; font-size:15px; font-weight:700; color:#fff; }
+.fal-review-detail { margin:0 0 14px; border:1px solid #dbe5f1; background:#f6f8fb; border-radius:4px; overflow:hidden; box-shadow:0 1px 2px rgba(15, 23, 42, .06); }
+.fal-review-detail-head { display:flex; justify-content:space-between; gap:16px; padding:12px 14px; background:#fff; color:#303133; border-bottom:1px solid #ebeef5; }
+.fal-review-detail-title { display:flex; align-items:center; gap:8px; font-size:15px; font-weight:700; color:#1f2937; }
 .fal-review-status-dot { width:8px; height:8px; border-radius:50%; background:#60a5fa; box-shadow:0 0 0 4px rgba(96, 165, 250, .16); }
 .fal-review-detail-actions { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:6px; }
-.fal-review-console-btn { display:inline-flex; align-items:center; gap:5px; min-height:30px; padding:5px 10px; border-radius:4px; background:#1f2937; border:1px solid #374151; color:#e5e7eb; line-height:18px; }
+.fal-review-console-btn { display:inline-flex; align-items:center; gap:5px; min-height:30px; padding:5px 10px; border-radius:4px; background:#fff; border:1px solid #d1d5db; color:#374151; line-height:18px; }
 .fal-review-console-btn:hover { color:#fff; background:#2563eb; border-color:#2563eb; }
-.fal-review-console-btn.is-disabled, .fal-review-console-btn.is-disabled:hover { color:#6b7280; background:#172033; border-color:#243044; cursor:not-allowed; pointer-events:none; }
-.fal-review-detail-close { color:#e5e7eb; }
+.fal-review-console-btn.is-disabled, .fal-review-console-btn.is-disabled:hover { color:#9ca3af; background:#f9fafb; border-color:#e5e7eb; cursor:not-allowed; pointer-events:none; }
+.fal-review-detail-close { color:#374151; }
 .fal-review-meta { display:flex; flex-wrap:wrap; gap:8px; padding:10px 14px; background:#fff; border-top:1px solid #ebeef5; border-bottom:1px solid #ebeef5; color:#303133; }
 .fal-review-meta > span { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:4px 9px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:4px; }
 .fal-review-meta b { color:#6b7280; font-weight:600; }
