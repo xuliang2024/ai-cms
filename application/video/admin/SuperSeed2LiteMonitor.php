@@ -32,6 +32,7 @@ class SuperSeed2LiteMonitor extends Admin {
             $meta = $this->parseTaskMeta($item['input_params'] ?? '');
             $item['_model_tier'] = $meta['model_tier'];
             $item['_resolution'] = $meta['resolution'];
+            $item['_sid'] = $this->extractOutputSid($item['output_params'] ?? '');
             $item['_detail'] = $this->parseDetail($item['status'], $item['output_params'] ?? '');
             $item['_duration_sec'] = $this->getCompletedDurationSec($item);
             $dataList[] = $item;
@@ -52,6 +53,9 @@ class SuperSeed2LiteMonitor extends Admin {
                 ['task_id', 'Task ID', 'callback', function($value){
                     $escaped = htmlspecialchars($value);
                     return "<span style='display:inline-flex;align-items:center;gap:4px;'><span class='ss2l-taskid' title='{$escaped}' style='max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;font-size:12px;font-family:monospace;'>{$escaped}</span><button type='button' class='ss2l-copy-btn' data-copy='{$escaped}' style='border:none;background:#ecf5ff;color:#409eff;cursor:pointer;border-radius:3px;padding:1px 6px;font-size:12px;line-height:1.5;' title='复制'>复制</button></span>";
+                }],
+                ['_sid', 'SID', 'callback', function($value){
+                    return $this->renderSidCell($value);
                 }],
                 ['user_id', '用户ID'],
                 ['_model_tier', 'Model档位', 'callback', function($value){
@@ -196,6 +200,7 @@ class SuperSeed2LiteMonitor extends Admin {
             }
             $taskRows[] = [
                 'task_id'      => $task['task_id'] ?? '',
+                'sid'          => $this->extractOutputSid($output),
                 'user_id'      => $task['user_id'],
                 'model_tier'   => $meta['model_tier'],
                 'resolution'   => $meta['resolution'],
@@ -260,6 +265,55 @@ class SuperSeed2LiteMonitor extends Admin {
             return $this->formatDetailCell("排队 {$idx}/{$len} | 预计生成 {$genCost} 排队 {$queueCost}", '#409eff');
         }
         return '';
+    }
+
+    private function extractOutputSid($outputParams)
+    {
+        $output = $this->decodeJsonValue($outputParams);
+        $sid = $this->findValueByKey($output, 'sid', 0);
+        if ($sid === null || $sid === '') {
+            return '-';
+        }
+
+        if (is_scalar($sid)) {
+            return trim((string) $sid);
+        }
+
+        return json_encode($sid, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    private function findValueByKey($value, $targetKey, $depth)
+    {
+        if ($depth > 8 || !is_array($value)) {
+            return null;
+        }
+
+        foreach ($value as $key => $item) {
+            if (strtolower((string) $key) === strtolower($targetKey)) {
+                return $item;
+            }
+        }
+
+        foreach ($value as $item) {
+            if (is_array($item)) {
+                $found = $this->findValueByKey($item, $targetKey, $depth + 1);
+                if ($found !== null && $found !== '') {
+                    return $found;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function renderSidCell($sid)
+    {
+        if (empty($sid) || $sid === '-') {
+            return '-';
+        }
+
+        $escaped = htmlspecialchars($sid, ENT_QUOTES, 'UTF-8');
+        return "<span class='ss2l-sid-cell' title='{$escaped}'>{$escaped}</span>";
     }
 
     private function extractFailureMessage($output)
@@ -630,6 +684,21 @@ class SuperSeed2LiteMonitor extends Admin {
     word-break: break-all;
     font-size: 12px;
 }
+.ss2l-sid-cell {
+    display: inline-block;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    color: #c2410c;
+    font-family: monospace;
+    font-weight: 700;
+    vertical-align: middle;
+}
 </style>
 
 <div class="ss2l-wrap">
@@ -780,6 +849,12 @@ HTML;
         return '<span class="ss2l-detail-cell" style="color:' + color + ';" title="' + full + '">' + visible + '</span>';
     }
 
+    function renderSidCell(sid) {
+        if (!sid || sid === '-') return '-';
+        var escaped = escapeHtml(sid);
+        return '<span class="ss2l-sid-cell" title="' + escaped + '">' + escaped + '</span>';
+    }
+
     function renderDetail(t) {
         if (!t.detail) return '-';
         if (t.status === 'failed') {
@@ -805,7 +880,7 @@ HTML;
         if (!tbody.length) return;
         tbody.empty();
 
-        var colCount = 10;
+        var colCount = 11;
 
         if (!tasks || tasks.length === 0) {
             tbody.append('<tr><td colspan="' + colCount + '" style="text-align:center;padding:20px;color:#909399;">暂无数据</td></tr>');
@@ -826,6 +901,7 @@ HTML;
             var taskIdEsc = escapeHtml(t.task_id || '');
             var modelTier = escapeHtml(t.model_tier || '-');
             var resolution = escapeHtml(t.resolution || '-');
+            var sidHtml = renderSidCell(t.sid || '-');
             var taskIdCell = '<span style="display:inline-flex;align-items:center;gap:4px;">'
                 + '<span style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;font-size:12px;font-family:monospace;" title="' + taskIdEsc + '">' + taskIdEsc + '</span>'
                 + '<button type="button" class="ss2l-copy-btn" data-copy="' + taskIdEsc + '" style="border:none;background:#ecf5ff;color:#409eff;cursor:pointer;border-radius:3px;padding:1px 6px;font-size:12px;line-height:1.5;" title="复制">复制</button>'
@@ -833,6 +909,7 @@ HTML;
 
             var row = '<tr>'
                 + '<td><div class="table-cell">' + taskIdCell + '</div></td>'
+                + '<td><div class="table-cell">' + sidHtml + '</div></td>'
                 + '<td><div class="table-cell">' + (t.user_id || '') + '</div></td>'
                 + '<td><div class="table-cell"><span style="color:#409eff;font-weight:bold">' + modelTier + '</span></div></td>'
                 + '<td><div class="table-cell"><span style="color:#606266;font-weight:bold">' + resolution + '</span></div></td>'
