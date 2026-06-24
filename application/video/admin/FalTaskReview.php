@@ -154,9 +154,16 @@ class FalTaskReview extends Admin
 .fal-review-console-btn:hover { color:#fff; background:#2563eb; border-color:#2563eb; }
 .fal-review-console-btn.is-disabled, .fal-review-console-btn.is-disabled:hover { color:#6b7280; background:#172033; border-color:#243044; cursor:not-allowed; pointer-events:none; }
 .fal-review-detail-close { color:#e5e7eb; }
-.fal-review-meta { display:flex; flex-wrap:wrap; gap:8px; padding:10px 14px; background:#172033; border-top:1px solid rgba(255,255,255,.05); color:#cbd5e1; }
-.fal-review-meta span { display:inline-flex; align-items:center; gap:5px; padding:4px 8px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); border-radius:4px; }
-.fal-review-meta b { color:#93c5fd; }
+.fal-review-meta { display:flex; flex-wrap:wrap; gap:8px; padding:10px 14px; background:#fff; border-top:1px solid #ebeef5; border-bottom:1px solid #ebeef5; color:#303133; }
+.fal-review-meta > span { display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:4px 9px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:4px; }
+.fal-review-meta b { color:#6b7280; font-weight:600; }
+.fal-review-status-badge { display:inline-flex; align-items:center; min-height:20px; padding:1px 8px; border-radius:999px; font-weight:700; line-height:18px; border:1px solid transparent; }
+.fal-review-status-completed { color:#15803d; background:#dcfce7; border-color:#bbf7d0; }
+.fal-review-status-failed { color:#b91c1c; background:#fee2e2; border-color:#fecaca; }
+.fal-review-status-pending { color:#a16207; background:#fef3c7; border-color:#fde68a; }
+.fal-review-status-processing, .fal-review-status-generating, .fal-review-status-submitting { color:#1d4ed8; background:#dbeafe; border-color:#bfdbfe; }
+.fal-review-status-transferring { color:#4338ca; background:#e0e7ff; border-color:#c7d2fe; }
+.fal-review-status-default { color:#4b5563; background:#f3f4f6; border-color:#e5e7eb; }
 .fal-review-detail-body { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; padding:12px; }
 .fal-review-section { min-width:0; padding:12px; background:#fff; border:1px solid #ebeef5; border-radius:4px; }
 .fal-review-section-full { grid-column:1 / -1; }
@@ -293,7 +300,7 @@ HTML;
 
         $id = $this->safeText($task['id']);
         $userId = $this->safeText($task['user_id']);
-        $statusText = $this->safeText($task['status']);
+        $statusText = $this->renderStatusBadge($task['status']);
         $appNameText = $this->safeText($task['app_name']);
         $money = $this->safeText($task['money']);
         $createdAt = $this->safeText($task['created_at']);
@@ -370,6 +377,25 @@ HTML;
 
         return '<a class="fal-review-console-btn" href="' . htmlspecialchars($href, ENT_QUOTES, 'UTF-8') .
             '"><i class="' . $icon . '"></i> ' . $title . '</a>';
+    }
+
+    private function renderStatusBadge($status)
+    {
+        $status = strval($status ?: '-');
+        $key = strtolower($status);
+        $classes = [
+            'completed' => 'completed',
+            'failed' => 'failed',
+            'pending' => 'pending',
+            'processing' => 'processing',
+            'generating' => 'generating',
+            'submitting' => 'submitting',
+            'transferring' => 'transferring',
+        ];
+        $class = isset($classes[$key]) ? $classes[$key] : 'default';
+
+        return '<span class="fal-review-status-badge fal-review-status-' . $class . '">' .
+            $this->safeText($status) . '</span>';
     }
 
     private function getNeighborTasks($task, $appName, $status)
