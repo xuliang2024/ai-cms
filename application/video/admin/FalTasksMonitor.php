@@ -133,45 +133,7 @@ class FalTasksMonitor extends Admin {
         $totalIncome = intval($incomeStats['totalIncome']);
         $orderCount = intval($incomeStats['orderCount']);
 
-        // 2. 模型分布（Top 10）
-        $modelDist = FalTasksModel::where('created_at', '>=', $startTime)
-            ->field([
-                'app_name',
-                'COUNT(*) as count',
-            ])
-            ->group('app_name')
-            ->order('count desc')
-            ->limit(10)
-            ->select();
-
-        $modelData = [];
-        foreach ($modelDist as $item) {
-            $name = $item['app_name'] ?: '未知';
-            $name = preg_replace('#^fal-ai/#', '', $name);
-            $modelData[] = [
-                'name' => $name,
-                'value' => intval($item['count']),
-            ];
-        }
-
-        // 3. 状态分布
-        $statusDist = FalTasksModel::where('created_at', '>=', $startTime)
-            ->field([
-                'status',
-                'COUNT(*) as count',
-            ])
-            ->group('status')
-            ->select();
-
-        $statusData = [];
-        foreach ($statusDist as $item) {
-            $statusData[] = [
-                'name' => $item['status'] ?: '未知',
-                'value' => intval($item['count']),
-            ];
-        }
-
-        // 4. 任务趋势 - 根据时间范围选择合适的分组粒度
+        // 2. 任务趋势 - 根据时间范围选择合适的分组粒度
         if ($minutes <= 120) {
             // 2小时以内按分钟分组
             $groupExpr = 'DATE_FORMAT(created_at, "%H:%i")';
@@ -213,7 +175,7 @@ class FalTasksMonitor extends Admin {
             $trendMoney[] = round(intval($row['net_money']) / 100, 1);
         }
 
-        // 5. 模型维度统计
+        // 3. 模型维度统计
         $modelStats = FalTasksModel::where('created_at', '>=', $startTime)
             ->field([
                 'app_name',
@@ -253,7 +215,7 @@ class FalTasksMonitor extends Admin {
             ];
         }
 
-        // 6. 最新任务列表（用于刷新表格）
+        // 4. 最新任务列表（用于刷新表格）
         $recentTasks = FalTasksModel::where('created_at', '>=', $startTime)
             ->field('id, user_id, app_name, money, status, is_refund, created_at, completed_at')
             ->order('created_at desc')
@@ -296,8 +258,6 @@ class FalTasksMonitor extends Admin {
                     'totalIncomeYuan' => round($totalIncome / 100, 2),
                     'orderCount'      => $orderCount,
                 ],
-                'modelDist'  => $modelData,
-                'statusDist' => $statusData,
                 'trend'      => [
                     'time'    => $trendTime,
                     'total'   => $trendTotal,
@@ -370,8 +330,6 @@ class FalTasksMonitor extends Admin {
 .monitor-card.rate-success .card-value { color: #67c23a; }
 .monitor-card.rate-danger { border-top-color: #f56c6c; }
 .monitor-card.rate-danger .card-value { color: #f56c6c; }
-.monitor-charts-row { display: flex; gap: 16px; margin-bottom: 16px; }
-.monitor-charts-row .chart-box { flex: 1; min-width: 0; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); padding: 8px; }
 .monitor-trend-row { margin-bottom: 16px; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); padding: 8px; }
 .monitor-status-bar {
     display: flex; align-items: center; justify-content: space-between;
@@ -458,16 +416,6 @@ class FalTasksMonitor extends Admin {
         </div>
     </div>
 
-    <!-- 饼图行：模型分布 + 状态分布 -->
-    <div class="monitor-charts-row">
-        <div class="chart-box">
-            <div id="chart-model" style="width:100%;height:340px;"></div>
-        </div>
-        <div class="chart-box">
-            <div id="chart-status" style="width:100%;height:340px;"></div>
-        </div>
-    </div>
-
     <!-- 趋势折线图 -->
     <div class="monitor-trend-row">
         <div id="chart-trend" style="width:100%;height:360px;"></div>
@@ -534,56 +482,14 @@ HTML;
 <script type="text/javascript">
 (function() {
     // ===== 图表实例 =====
-    var chartModel  = echarts.init(document.getElementById('chart-model'));
-    var chartStatus = echarts.init(document.getElementById('chart-status'));
     var chartTrend  = echarts.init(document.getElementById('chart-trend'));
 
     // 窗口自适应
     window.addEventListener('resize', function() {
-        chartModel.resize();
-        chartStatus.resize();
         chartTrend.resize();
     });
 
-    // ===== 状态颜色映射 =====
-    var statusColorMap = {
-        'completed':  '#67c23a',
-        'failed':     '#f56c6c',
-        'pending':    '#e6a23c',
-        'processing': '#409eff'
-    };
-
     // ===== 初始化图表选项 =====
-    chartModel.setOption({
-        title: { text: '模型分布 (Top 10)', left: 'center', textStyle: { fontSize: 14, color: '#303133' } },
-        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-        legend: { orient: 'vertical', left: 10, top: 30, textStyle: { fontSize: 11 }, type: 'scroll' },
-        series: [{
-            name: '任务数', type: 'pie', radius: ['35%', '65%'], center: ['60%', '55%'],
-            avoidLabelOverlap: false,
-            itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
-            label: { show: false, position: 'center' },
-            emphasis: { label: { show: true, fontSize: 13, fontWeight: 'bold' } },
-            labelLine: { show: false },
-            data: []
-        }]
-    });
-
-    chartStatus.setOption({
-        title: { text: '状态分布', left: 'center', textStyle: { fontSize: 14, color: '#303133' } },
-        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-        legend: { orient: 'vertical', left: 10, top: 30, textStyle: { fontSize: 11 } },
-        series: [{
-            name: '任务数', type: 'pie', radius: ['35%', '65%'], center: ['60%', '55%'],
-            avoidLabelOverlap: false,
-            itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
-            label: { show: false, position: 'center' },
-            emphasis: { label: { show: true, fontSize: 13, fontWeight: 'bold' } },
-            labelLine: { show: false },
-            data: []
-        }]
-    });
-
     chartTrend.setOption({
         title: { text: '{$trendTitle}', textStyle: { fontSize: 14, color: '#303133' } },
         tooltip: { trigger: 'axis' },
@@ -718,25 +624,6 @@ HTML;
                 $('#card-net-money-yuan').text('¥' + d.overview.netMoneyYuan);
                 $('#card-income').text('¥' + d.overview.totalIncomeYuan);
                 $('#card-order-count').text(d.overview.orderCount);
-
-                // 更新模型分布饼图
-                chartModel.setOption({
-                    series: [{ data: d.modelDist }]
-                });
-
-                // 更新状态分布饼图（带颜色映射）
-                var statusPieData = [];
-                for (var i = 0; i < d.statusDist.length; i++) {
-                    var item = d.statusDist[i];
-                    statusPieData.push({
-                        name: item.name,
-                        value: item.value,
-                        itemStyle: { color: statusColorMap[item.name] || '#909399' }
-                    });
-                }
-                chartStatus.setOption({
-                    series: [{ data: statusPieData }]
-                });
 
                 // 更新趋势折线图
                 chartTrend.setOption({
