@@ -12,13 +12,17 @@ class FalTaskReview extends Admin
     {
         $appName = input('param.app_name', '', 'trim');
         $status = input('param.status', '', 'trim');
+        $taskId = input('param.task_id', '', 'trim');
+        $onlineTaskId = input('param.online_task_id', '', 'trim');
         $reviewId = input('param.review_id', 0, 'intval');
 
-        $query = $this->applyTaskFilters(FalTasksModel::where([]), $appName, $status);
+        $query = $this->applyTaskFilters(FalTasksModel::where([]), $appName, $status, $taskId, $onlineTaskId);
 
         $queryParams = [
             'app_name' => $appName,
             'status' => $status,
+            'task_id' => $taskId,
+            'online_task_id' => $onlineTaskId,
         ];
         if ($reviewId > 0) {
             $queryParams['review_id'] = $reviewId;
@@ -30,13 +34,17 @@ class FalTaskReview extends Admin
                 'query' => $queryParams,
             ]);
 
-        $filterHtml = $this->buildFilterHtml($appName, $status);
+        $filterHtml = $this->buildFilterHtml($appName, $status, $taskId, $onlineTaskId);
         $reviewTask = $reviewId > 0 ? FalTasksModel::where('id', $reviewId)->find() : null;
-        $detailHtml = $reviewId > 0 ? $this->buildDetailPanel($reviewTask, $appName, $status) : '';
-        $reviewHref = $this->buildUrl(['app_name' => $appName, 'status' => $status, 'review_id' => '__id__']);
-        $tips = $appName === ''
-            ? '默认展示 Fal 任务最新记录；输入模型名称后按模型精确筛选。'
-            : '当前模型：<b style="color:#409eff">' . htmlspecialchars($appName, ENT_QUOTES, 'UTF-8') . '</b>';
+        $detailHtml = $reviewId > 0 ? $this->buildDetailPanel($reviewTask, $appName, $status, $taskId, $onlineTaskId) : '';
+        $reviewHref = $this->buildUrl([
+            'app_name' => $appName,
+            'status' => $status,
+            'task_id' => $taskId,
+            'online_task_id' => $onlineTaskId,
+            'review_id' => '__id__',
+        ]);
+        $tips = $this->buildTips($appName, $status, $taskId, $onlineTaskId);
 
         return ZBuilder::make('table')
             ->setPageTitle('任务审查')
@@ -101,7 +109,7 @@ class FalTaskReview extends Admin
             ->fetch();
     }
 
-    private function applyTaskFilters($query, $appName, $status)
+    private function applyTaskFilters($query, $appName, $status, $taskId = '', $onlineTaskId = '')
     {
         if ($appName !== '') {
             $query = $query->where('app_name', $appName);
@@ -109,13 +117,21 @@ class FalTaskReview extends Admin
         if ($status !== '') {
             $query = $query->where('status', $status);
         }
+        if ($taskId !== '') {
+            $query = $query->where('task_id', $taskId);
+        }
+        if ($onlineTaskId !== '') {
+            $query = $query->where('online_task_id', $onlineTaskId);
+        }
 
         return $query;
     }
 
-    private function buildFilterHtml($appName, $status)
+    private function buildFilterHtml($appName, $status, $taskId, $onlineTaskId)
     {
         $appNameEsc = htmlspecialchars($appName, ENT_QUOTES, 'UTF-8');
+        $taskIdEsc = htmlspecialchars($taskId, ENT_QUOTES, 'UTF-8');
+        $onlineTaskIdEsc = htmlspecialchars($onlineTaskId, ENT_QUOTES, 'UTF-8');
         $statusOptions = [
             '' => '全部状态',
             'completed' => 'completed',
@@ -139,10 +155,11 @@ class FalTaskReview extends Admin
 
         return <<<HTML
 <style>
-.fal-review-filter { display:flex; align-items:center; gap:8px; margin-bottom:12px; padding:12px; background:#f8f9fb; border:1px solid #ebeef5; border-radius:4px; }
+.fal-review-filter { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:12px; padding:12px; background:#f8f9fb; border:1px solid #ebeef5; border-radius:4px; }
 .fal-review-filter label { margin:0 4px 0 0; font-weight:600; color:#606266; }
-.fal-review-filter .form-control { width:280px; height:32px; }
+.fal-review-filter .form-control { width:260px; height:32px; }
 .fal-review-filter select.form-control { width:150px; }
+.fal-review-filter .fal-review-filter-task { width:320px; }
 .fal-review-json { display:block; max-width:360px; max-height:56px; overflow:hidden; white-space:pre-wrap; word-break:break-all; color:#606266; line-height:18px; }
 .fal-review-copy { display:inline-block; max-width:220px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; vertical-align:middle; }
 .fal-review-detail { margin:0 0 14px; border:1px solid #dbe5f1; background:#f6f8fb; border-radius:4px; overflow:hidden; box-shadow:0 1px 2px rgba(15, 23, 42, .06); }
@@ -308,6 +325,10 @@ class FalTaskReview extends Admin
 <form class="fal-review-filter" method="get" action="{$action}">
     <label>模型名称</label>
     <input class="form-control" type="text" name="app_name" value="{$appNameEsc}" placeholder="例如 st-ai/super-seed2-lite">
+    <label>系统任务ID</label>
+    <input class="form-control fal-review-filter-task" type="text" name="task_id" value="{$taskIdEsc}" placeholder="例如 e87b6b24-...">
+    <label>Task ID</label>
+    <input class="form-control fal-review-filter-task" type="text" name="online_task_id" value="{$onlineTaskIdEsc}" placeholder="例如 codex-apiz-local-...">
     <label>状态</label>
     <select class="form-control" name="status">{$optionsHtml}</select>
     <button class="btn btn-primary" type="submit"><i class="fa fa-search"></i> 加载</button>
@@ -316,9 +337,37 @@ class FalTaskReview extends Admin
 HTML;
     }
 
-    private function buildDetailPanel($task, $appName, $status)
+    private function buildTips($appName, $status, $taskId, $onlineTaskId)
     {
-        $closeUrl = $this->buildUrl(['app_name' => $appName, 'status' => $status]);
+        $filters = [];
+        if ($appName !== '') {
+            $filters[] = '模型：<b style="color:#409eff">' . $this->safeText($appName) . '</b>';
+        }
+        if ($taskId !== '') {
+            $filters[] = '系统任务ID：<b style="color:#409eff">' . $this->safeText($taskId) . '</b>';
+        }
+        if ($onlineTaskId !== '') {
+            $filters[] = 'Task ID：<b style="color:#409eff">' . $this->safeText($onlineTaskId) . '</b>';
+        }
+        if ($status !== '') {
+            $filters[] = '状态：<b style="color:#409eff">' . $this->safeText($status) . '</b>';
+        }
+
+        if (empty($filters)) {
+            return '默认展示 Fal 任务最新记录；可按模型名称、系统任务ID、Task ID 或状态精确筛选。';
+        }
+
+        return '当前筛选：' . implode('，', $filters);
+    }
+
+    private function buildDetailPanel($task, $appName, $status, $filterTaskId, $filterOnlineTaskId)
+    {
+        $closeUrl = $this->buildUrl([
+            'app_name' => $appName,
+            'status' => $status,
+            'task_id' => $filterTaskId,
+            'online_task_id' => $filterOnlineTaskId,
+        ]);
         if (empty($task)) {
             return <<<HTML
 <div class="fal-review-detail">
@@ -355,12 +404,12 @@ HTML;
         $money = $this->safeText($task['money']);
         $createdAt = $this->safeText($task['created_at']);
         $completedAt = $this->safeText($task['completed_at'] ?: '-');
-        $taskId = $this->safeText($task['task_id']);
-        $onlineTaskId = $this->safeText($task['online_task_id'] ?: '-');
+        $taskIdText = $this->safeText($task['task_id']);
+        $onlineTaskIdText = $this->safeText($task['online_task_id'] ?: '-');
         $sid = $this->safeText($this->extractOutputSid($output));
-        $neighbors = $this->getNeighborTasks($task, $appName, $status);
-        $previousButton = $this->renderNavButton($neighbors['previous'], '上一条', 'fa fa-chevron-left', $appName, $status);
-        $nextButton = $this->renderNavButton($neighbors['next'], '下一条', 'fa fa-chevron-right', $appName, $status);
+        $neighbors = $this->getNeighborTasks($task, $appName, $status, $filterTaskId, $filterOnlineTaskId);
+        $previousButton = $this->renderNavButton($neighbors['previous'], '上一条', 'fa fa-chevron-left', $appName, $status, $filterTaskId, $filterOnlineTaskId);
+        $nextButton = $this->renderNavButton($neighbors['next'], '下一条', 'fa fa-chevron-right', $appName, $status, $filterTaskId, $filterOnlineTaskId);
 
         $promptHtml = $this->renderPromptSection($prompts);
         $imageHtml = $this->renderMediaSection('参考图', $inputMedia['image'], 'image', 'fal-review-reference-item');
@@ -396,8 +445,8 @@ HTML;
         <span><b>金额(分)</b> {$money}</span>
         <span><b>创建</b> {$createdAt}</span>
         <span><b>完成</b> {$completedAt}</span>
-        <span><b>系统任务ID</b> {$taskId}</span>
-        <span><b>FAL任务ID</b> {$onlineTaskId}</span>
+        <span><b>系统任务ID</b> {$taskIdText}</span>
+        <span><b>FAL任务ID</b> {$onlineTaskIdText}</span>
         <span class="fal-review-meta-sid"><b>SID</b> {$sid}</span>
     </div>
     <div class="fal-review-detail-body">
@@ -412,7 +461,7 @@ HTML;
 HTML;
     }
 
-    private function renderNavButton($task, $title, $icon, $appName, $status)
+    private function renderNavButton($task, $title, $icon, $appName, $status, $taskId, $onlineTaskId)
     {
         $title = $this->safeText($title);
         $icon = $this->safeText($icon);
@@ -423,6 +472,8 @@ HTML;
         $href = $this->buildUrl([
             'app_name' => $appName,
             'status' => $status,
+            'task_id' => $taskId,
+            'online_task_id' => $onlineTaskId,
             'review_id' => $task['id'],
         ]);
 
@@ -449,12 +500,12 @@ HTML;
             $this->safeText($status) . '</span>';
     }
 
-    private function getNeighborTasks($task, $appName, $status)
+    private function getNeighborTasks($task, $appName, $status, $taskId, $onlineTaskId)
     {
         $createdAt = $task['created_at'];
         $id = intval($task['id']);
 
-        $previousQuery = $this->applyTaskFilters(FalTasksModel::where([]), $appName, $status);
+        $previousQuery = $this->applyTaskFilters(FalTasksModel::where([]), $appName, $status, $taskId, $onlineTaskId);
         $previous = $previousQuery
             ->where(function ($query) use ($createdAt, $id) {
                 $query->where('created_at', '>', $createdAt)
@@ -466,7 +517,7 @@ HTML;
             ->order('created_at asc, id asc')
             ->find();
 
-        $nextQuery = $this->applyTaskFilters(FalTasksModel::where([]), $appName, $status);
+        $nextQuery = $this->applyTaskFilters(FalTasksModel::where([]), $appName, $status, $taskId, $onlineTaskId);
         $next = $nextQuery
             ->where(function ($query) use ($createdAt, $id) {
                 $query->where('created_at', '<', $createdAt)
